@@ -4,6 +4,7 @@
  */
 (function () {
 
+    let node
 
     let SQLCompiler = function (sql) {
 
@@ -45,7 +46,7 @@
 
 
                 /**
-                 * 词法分析
+                 * 词法分析(Lexical analyzer : https://zh.wikipedia.org/zh-hans/%E8%AF%8D%E6%B3%95%E5%88%86%E6%9E%90)
                  * 遍历SQL, 生成 Token 表
                  */
                 lexicalAnalysis: {
@@ -111,6 +112,14 @@
 
                             return {type: "Keyword", value: lexicon};
                         }
+                        if (typeof keywordTable.updateStatement[lexicon] !== "undefined" || typeof keywordTable.insertStatement[lexicon] !== "undefined") {
+
+                            return {type: "Keyword", value: lexicon};
+                        }
+                        if (typeof keywordTable.deleteStatement[lexicon] !== "undefined") {
+
+                            return {type: "Keyword", value: lexicon};
+                        }
 
                         // 词汇是符号
                         let symbolTable = SQLCompiler.prototype.tool.constContainer.referenceTable.symbolTable;
@@ -134,11 +143,11 @@
                         // 词汇是 Identifier
                         return {type: "Identifier", value: lexicon};
                     }
-
                 },
 
                 /**
-                 * 语法分析
+                 * 语法分析(语法分析器,syntactic analysis也叫parsing : https://zh.wikipedia.org/zh-hans/%E8%AA%9E%E6%B3%95%E5%88%86%E6%9E%90%E5%99%A8)
+                 * 是根据某种给定的形式文法对由单词序列( 如英语单词序列 )构成的输入文本进行分析并确定其语法结构的一种过程
                  * 通过循环Token表, 生成 AST, 语法错误则不能生成 AST
                  */
                 syntacticAnalysis: {
@@ -146,6 +155,23 @@
                     work() {
 
                     },
+
+
+                    generateASTNode(token_node) {
+
+                        return {
+
+                            type: "", // 节点类型
+
+                            value: "",
+
+                            child: null, // 子节点
+
+                            sibling: null, // 下一个 sibling 节点
+
+                            comment: "",
+                        };
+                    }
                 },
 
                 /**
@@ -221,6 +247,7 @@
                             "in": 20018,
                             "desc": 20019,
                             "asc": 20020,
+                            "as": 20021,
                         },
 
                         updateStatement: {
@@ -233,6 +260,13 @@
 
                             "into": 20020,
                             "values": 20021,
+                        },
+
+                        deleteStatement: {
+
+                            "from": 20030,
+                            "where": 20031,
+                            "and": 20032,
                         }
                     },
 
@@ -247,6 +281,132 @@
                         "Punctuator": 5002,
                         "Numeric": 5003,
                         "String": 5004,
+                    }
+                },
+
+                // 每种类型的 token 所可能充当的语法结构
+                tokenDomainOfASTNode: {
+
+                    "KeyWord": "statement|operator|",
+                    "Identifier": ""
+                },
+
+                // 参考AST
+                referenceAST: {
+
+                    // 节点继承关系
+                    nodeInheritance: {
+
+                        type: "root",
+                        variant: "root",
+                        subNode: [
+
+                            {
+                                type: "statement",
+                                variant: "select|update|delete|insert"
+                            },
+
+                            {
+                                type: "expression",
+                                variant: ""
+                            },
+                        ]
+                    },
+
+                    // 属性继承关系
+                    propertyInheritance: {
+
+                        type: "root",
+                        variant: "root",
+                        subProperty: [
+
+                            {
+                                type: "clause",
+                                variant: "from|group|having|into|limit|order|"
+                            },
+                        ]
+                    }
+
+                },
+
+                // 语法模型
+                syntacticModel: {
+
+                    // AST根节点
+                    root: {
+
+                        type: "root",
+                        variant: "root",
+                        children: [
+                            {
+                                type: "statement",
+                                variant: "select",
+                                children: [
+
+                                    {
+                                        type: "expression", variant: "column", recursive: true,
+                                        children: {type: "object", variant: "column", token: "identifier"}
+                                    },
+
+                                    {
+                                        type: "clause", variant: "from", token: "keyword",
+                                        children: {type: "object", variant: "table", token: "identifier"}
+                                    },
+                                ]
+                            },
+
+                            {
+                                type: "statement",
+                                variant: "update",
+
+                                children: [
+
+                                    {type: "identifier", variant: "table", token: "identifier"},
+                                    {type: "clause", variant: "set", token: "keyword"},
+                                    {
+                                        type: "clause", variant: "where", token: "keyword",
+                                        children: {
+                                            type: "expression",
+                                            variant: "where",
+                                            recursive: true,
+                                            left: {type: "object", variant: "column", token: "identifier"},
+                                            right: {type: "object", variant: "column", token: "identifier"},
+                                            operator: {type: "object", variant: "column", token: "punctuator"}
+                                        }
+                                    },
+                                ]
+                            },
+
+                            {
+                                type: "statement",
+                                variant: "delete",
+
+                                children: [
+
+                                    {
+                                        type: "clause", variant: "from", token: "keyword",
+                                        children: {type: "object", variant: "table", token: "identifier"}
+                                    },
+                                    {
+                                        type: "clause", variant: "where", token: "keyword",
+                                        children: {
+                                            type: "expression",
+                                            variant: "where",
+                                            recursive: true,
+                                            left: {type: "object", variant: "column", token: "identifier"},
+                                            right: {type: "object", variant: "column", token: "identifier"},
+                                            operator: {type: "object", variant: "column", token: "punctuator"}
+                                        }
+                                    },
+                                ]
+                            },
+
+                            {
+                                type: "statement",
+                                variant: "insert",
+                            },
+                        ],
+                        siblings: null,
                     }
                 },
             },
