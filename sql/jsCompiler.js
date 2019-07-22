@@ -148,7 +148,7 @@
                 /**
                  * 语法分析(语法分析器,syntactic analysis也叫parsing : https://zh.wikipedia.org/zh-hans/%E8%AA%9E%E6%B3%95%E5%88%86%E6%9E%90%E5%99%A8)
                  * 是根据某种给定的形式文法对由单词序列( 如英语单词序列 )构成的输入文本进行分析并确定其语法结构的一种过程
-                 * 通过循环Token表, 生成 AST, 语法错误则不能生成 AST
+                 * 循环Token表, 通过已有的语法结构模型, 生成 AST, 语法错误则不能生成 AST
                  */
                 syntacticAnalysis: {
 
@@ -171,6 +171,11 @@
 
                             comment: "",
                         };
+                    },
+
+                    createExpressionNode(type) {
+
+
                     }
                 },
 
@@ -284,49 +289,17 @@
                     }
                 },
 
-                // 每种类型的 token 所可能充当的语法结构
-                tokenDomainOfASTNode: {
+                expressionType: {
 
-                    "KeyWord": "statement|operator|",
-                    "Identifier": ""
+                    column: 6000,
+                    from: 6001,
+                    where: 6002,
                 },
 
-                // 参考AST
-                referenceAST: {
+                clauseType: {
 
-                    // 节点继承关系
-                    nodeInheritance: {
-
-                        type: "root",
-                        variant: "root",
-                        subNode: [
-
-                            {
-                                type: "statement",
-                                variant: "select|update|delete|insert"
-                            },
-
-                            {
-                                type: "expression",
-                                variant: ""
-                            },
-                        ]
-                    },
-
-                    // 属性继承关系
-                    propertyInheritance: {
-
-                        type: "root",
-                        variant: "root",
-                        subProperty: [
-
-                            {
-                                type: "clause",
-                                variant: "from|group|having|into|limit|order|"
-                            },
-                        ]
-                    }
-
+                    from: 6000,
+                    where: 6001,
                 },
 
                 // 语法模型
@@ -380,13 +353,40 @@
                             {
                                 type: "statement",
                                 variant: "delete",
+                                token: "keyword",
 
                                 children: [
 
+                                    // delete 后面紧跟的是 表达式(即delete引导的表达式)
+                                    {
+                                        type: "expression", variant: "delete", ignore: true
+                                    },
+
+                                    // 表达式后面紧跟的是 from 子句, 由关键字 from 引导
                                     {
                                         type: "clause", variant: "from", token: "keyword",
-                                        children: {type: "object", variant: "table", token: "identifier"}
                                     },
+
+                                    // from后面紧跟的是 表达式(即from引导的表达式)
+                                    {
+                                        type: "expression", variant: "from",
+                                    },
+
+                                    // from表达式后面紧跟的是 可忽略的,可递归的 Join 谓语
+                                    {
+                                        type: "predicate", variant: "join", recursive: true, ignore: true,
+                                    },
+
+                                    // join后面紧跟的是 where 子句, 由关键字 where 引导, 可忽略
+                                    {
+                                        type: "clause", variant: "where", token: "keyword", ignore: true,
+                                    },
+
+                                    // where后面紧跟的是 表达式(即where引导的表达式)
+                                    {
+                                        type: "expression", variant: "where", recursive: true, ignore: true,
+                                    },
+
                                     {
                                         type: "clause", variant: "where", token: "keyword",
                                         children: {
