@@ -1,34 +1,72 @@
 <html>
 
-<head></head>
+<head>
+
+    <style>
+
+        textarea{
+
+            display: block;
+            border: 1px solid #ddd;
+            width: 80%;
+            height: 150px;
+            padding: 10px;
+            font-size: 15px;
+        }
+
+        button{
+
+            display: block;
+            padding:5px 10px;
+            background: aquamarine;
+            color:#7fb2ff;
+            width: 70px;
+            border: none;
+            margin-top: 17px;
+        }
+
+    </style>
+
+</head>
 <body>
 
-<p id="SQL">SELECT * FROM test WHERE id>0 AND id<87 AND name="test" ORDER BY id DESC LIMIT 5;</p>
+<p id="SQL"></p>
+
+<textarea>SELECT * FROM test as t1, test2 as t2 left join test3 as t3 on t2.u_id = t3.id WHERE id>0 AND id<87 AND name='test' and t1.id=t2.id group by t1.name ORDER BY id DESC LIMIT 5;</textarea>
+
+<button>Go</button>
 
 <script src="https://cdn.bootcss.com/jquery/2.2.1/jquery.min.js"></script>
 <script src="./sql/jsCompiler.js"></script>
 
 <script>
 
-    let obj = $("#SQL");
+    $(document).on("click","button",function(){
 
-    obj.SQLCompiler(obj.text());
+        let obj = $("#SQL");
 
-    console.log("\n%c 第 1 阶段, 词法分析 :", 'color:#FF9800;');
-    console.log("\n%c sql_cleared 如下:", 'color:green;');
-    console.log( obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLCleared() );
+        obj.text( $("textarea").val() );
 
-    console.log("\n%c 分词数组 如下:", 'color:green;');
-    console.log( obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLLexiconArr() );
+        obj.SQLCompiler(obj.text());
 
-    console.log("\n%c Token Table 如下:", 'color:green;');
-    console.log( obj.SQLCompilerDebug.steps.lexicalAnalysis.getTokenTable() );
+        console.clear();
 
-    console.log("\n%c 第 2 阶段, 语法分析 :", 'color:#FF9800;');
-    console.log("\n%c statement_type 为 : " + obj.SQLCompilerDebug.steps.syntacticAnalysis.getStatementType(), 'color:green;');
+        console.log("\n%c 第 1 阶段, 词法分析 :", 'color:#FF9800;');
+        console.log("\n%c sql_cleared 如下:", 'color:green;');
+        console.log( obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLCleared() );
 
-    console.log("\n%c AST Outline 如下:", 'color:green;');
-    console.log(obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutline());
+        console.log("\n%c 分词数组 如下:", 'color:green;');
+        console.log( obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLLexiconArr() );
+
+        console.log("\n%c Token Table 如下:", 'color:green;');
+        console.log( obj.SQLCompilerDebug.steps.lexicalAnalysis.getTokenTable() );
+
+        console.log("\n%c 第 2 阶段, 语法分析 :", 'color:#FF9800;');
+        console.log("\n%c statement_type 为 : " + obj.SQLCompilerDebug.steps.syntacticAnalysis.getStatementType(), 'color:green;');
+
+        console.log("\n%c AST Outline 如下:", 'color:green;');
+        console.log(obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutline());
+    });
 
 </script>
 

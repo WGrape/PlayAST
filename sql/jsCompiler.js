@@ -208,7 +208,7 @@
                             if (token_obj.index === 0 && token === "keyword" && tokenReferASTNodeType.statement.indexOf(token_obj.value) > -1) {
 
                                 node_type = "statement";
-                            } else if (token === "keyword" && tokenReferASTNodeType.predicate.indexOf(token_obj.value) > -1) {
+                            } else if (token === "keyword" && tokenReferASTNodeType.predicate.indexOf(token_table[token_obj.index - 1].value) < 0 && tokenReferASTNodeType.predicate.indexOf(token_obj.value) > -1) {
 
                                 node_type = "predicate";
                             } else if (token === "keyword" && tokenReferASTNodeType.clause.indexOf(token_obj.value) > -1) {
@@ -238,6 +238,8 @@
                         // 内部会根据语法模型进行剪枝
                         let statement_type = SQLCompiler.prototype.tool.globalVariableContainer.statement_type;
                         let syntacticModel = SQLCompiler.prototype.tool.constContainer.syntacticModel.statement_type;
+
+                        // 主要是对expression剪枝
 
                         SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned = root;
                     },
