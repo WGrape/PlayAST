@@ -10,16 +10,25 @@
 
 <script>
 
-    $("#SQL").SQLCompiler($("#SQL").text());
+    let obj = $("#SQL");
 
+    obj.SQLCompiler(obj.text());
+
+    console.log("\n%c 第 1 阶段, 词法分析 :", 'color:#FF9800;');
     console.log("\n%c sql_cleared 如下:", 'color:green;');
-    console.log( $("#SQL").SQLCompilerDebug.steps.lexicalAnalysis.getSQLCleared() );
+    console.log( obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLCleared() );
 
     console.log("\n%c 分词数组 如下:", 'color:green;');
-    console.log( $("#SQL").SQLCompilerDebug.steps.lexicalAnalysis.getSQLLexiconArr() );
+    console.log( obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLLexiconArr() );
 
     console.log("\n%c Token Table 如下:", 'color:green;');
-    console.log( $("#SQL").SQLCompilerDebug.steps.lexicalAnalysis.getTokenTable() );
+    console.log( obj.SQLCompilerDebug.steps.lexicalAnalysis.getTokenTable() );
+
+    console.log("\n%c 第 2 阶段, 语法分析 :", 'color:#FF9800;');
+    console.log("\n%c statement_type 为 : " + obj.SQLCompilerDebug.steps.syntacticAnalysis.getStatementType(), 'color:green;');
+
+    console.log("\n%c AST Outline 如下:", 'color:green;');
+    console.log(obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutline());
 
 </script>
 
