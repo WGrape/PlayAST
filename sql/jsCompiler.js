@@ -156,9 +156,17 @@
                         // 先决策是哪种Statement
                         this.decisionStatement();
 
-                        // 根据 statement 的语法模型, 生成 AST Outline
-                        this.createASTOutlineByStatementType();
+                        // 生成 AST Outline (创建出 AST 的轮廓)
+                        this.createASTOutline();
 
+                        // 为 AST Outline 剪枝 (相当于diff)
+                        this.makeASTOutlinePruning();
+
+                        // 将转换 AST Outline 转换成一棵 AST
+                        this.makeASTOutlineTransforming();
+
+                        // 优化 AST
+                        this.optimizeAST();
 
                         return true;
                     },
@@ -184,49 +192,71 @@
                         }
                     },
 
-                    createASTOutlineByStatementType() {
+                    createASTOutline() {
 
                         let token_table = SQLCompiler.prototype.tool.globalVariableContainer.tokenTable;
                         let root = this.generateASTNode();
+
+                        let tokenReferASTNodeType = SQLCompiler.prototype.tool.constContainer.tokenReferASTNodeType;
 
                         for (let token_obj of token_table) {
 
                             let token = token_obj.type.toLocaleLowerCase();
 
-                            let node_types = SQLCompiler.prototype.tool.constContainer.tokenReferASTNodeType[token];
-                            let node = null;
+                            let node = null, node_type = null;
 
-                            // JS没有指针, 只有引用, 但是引用也无法实现无限的递归
-                            for (let node_type in node_types) {
+                            if (token_obj.index === 0 && token === "keyword" && tokenReferASTNodeType.statement.indexOf(token_obj.value) > -1) {
 
-                                if ("expression" === node_type) {
+                                node_type = "statement";
+                            } else if (token === "keyword" && tokenReferASTNodeType.predicate.indexOf(token_obj.value) > -1) {
 
-                                    continue;
-                                }
+                                node_type = "predicate";
+                            } else if (token === "keyword" && tokenReferASTNodeType.clause.indexOf(token_obj.value) > -1) {
 
-                                if (node_types.hasOwnProperty(node_type)) {
+                                node_type = "clause";
+                            } else {
 
-                                    let next_node = this.generateASTNode({
-                                        type: node_type,
-                                        index: token_obj.index,
-                                        next: []
-                                    });
-
-                                    // 如果node
-                                    if (node === null) {
-
-                                        node = new Object(next_node);
-                                    } else {
-
-                                        node.next.push(next_node);
-                                    }
-                                }
+                                node_type = "expression";
                             }
+
+                            node = this.generateASTNode({
+                                type: node_type,
+                                variant: token_obj.value,
+                                index: token_obj.index
+                            });
 
                             node !== null && root.children.push(node);
                         }
 
                         SQLCompiler.prototype.tool.globalVariableContainer.ast_outline = root;
+                    },
+
+                    makeASTOutlinePruning() {
+
+                        let root = SQLCompiler.prototype.tool.globalVariableContainer.ast_outline;
+
+                        // 内部会根据语法模型进行剪枝
+                        let statement_type = SQLCompiler.prototype.tool.globalVariableContainer.statement_type;
+                        let syntacticModel = SQLCompiler.prototype.tool.constContainer.syntacticModel.statement_type;
+
+                        SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned = root;
+                    },
+
+                    makeASTOutlineTransforming() {
+
+                        // 剪枝后的 ast outline
+                        let root = SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned;
+
+                        SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_transformed = root;
+                    },
+
+                    optimizeAST() {
+
+                        // 转换后的 AST
+                        let root = SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_transformed;
+
+
+                        SQLCompiler.prototype.tool.globalVariableContainer.ast = root;
                     },
 
                     generateASTNode(node = {}) {
@@ -244,11 +274,8 @@
                             children: (typeof node.children !== "undefined") ? node.children : [],
 
                             index: (typeof node.index !== "undefined") ? node.index : -1, // token 下标
-
-                            next: (typeof node.next !== "undefined") ? node.next : null, // token 下标
                         };
                     },
-
                 },
 
                 /**
@@ -364,109 +391,148 @@
                 // 语法模型
                 syntacticModel: {
 
-                    // AST根节点
-                    root: {
+                    select: {
 
-                        type: "root",
-                        variant: "root",
-                        children: [
-                            {
-                                type: "statement",
-                                variant: "select",
-                                children: [
+                        // AST根节点
+                        root: {
 
-                                    {
-                                        type: "expression", variant: "column", recursive: true,
-                                        children: {type: "object", variant: "column", token: "identifier"}
-                                    },
+                            type: "root",
+                            variant: "root",
+                            children: [
 
-                                    {
-                                        type: "clause", variant: "from", token: "keyword",
-                                        children: {type: "object", variant: "table", token: "identifier"}
-                                    },
-                                ]
-                            },
+                                {
+                                    type: "statement",
+                                    variant: "select",
+                                    children: [
 
-                            {
-                                type: "statement",
-                                variant: "update",
+                                        {
+                                            type: "expression", variant: "column", recursive: true,
+                                            children: {type: "object", variant: "column", token: "identifier"}
+                                        },
 
-                                children: [
+                                        {
+                                            type: "clause", variant: "from", token: "keyword",
+                                            children: {type: "object", variant: "table", token: "identifier"}
+                                        },
+                                    ]
+                                },
+                            ],
+                        }
+                    },
 
-                                    {type: "identifier", variant: "table", token: "identifier"},
-                                    {type: "clause", variant: "set", token: "keyword"},
-                                    {
-                                        type: "clause", variant: "where", token: "keyword",
-                                        children: {
-                                            type: "expression",
-                                            variant: "where",
-                                            recursive: true,
-                                            left: {type: "object", variant: "column", token: "identifier"},
-                                            right: {type: "object", variant: "column", token: "identifier"},
-                                            operator: {type: "object", variant: "column", token: "punctuator"}
-                                        }
-                                    },
-                                ]
-                            },
+                    update: {
 
-                            {
-                                type: "statement",
-                                variant: "delete",
-                                token: "keyword",
+                        // AST根节点
+                        root: {
 
-                                children: [
+                            type: "root",
+                            variant: "root",
+                            children: [
 
-                                    // delete 后面紧跟的是 表达式(即delete引导的表达式)
-                                    {
-                                        type: "expression", variant: "delete", ignore: true
-                                    },
+                                {
+                                    type: "statement",
+                                    variant: "update",
 
-                                    // 表达式后面紧跟的是 from 子句, 由关键字 from 引导
-                                    {
-                                        type: "clause", variant: "from", token: "keyword",
-                                    },
+                                    children: [
 
-                                    // from后面紧跟的是 表达式(即from引导的表达式)
-                                    {
-                                        type: "expression", variant: "from",
-                                    },
+                                        {type: "identifier", variant: "table", token: "identifier"},
+                                        {type: "clause", variant: "set", token: "keyword"},
+                                        {
+                                            type: "clause", variant: "where", token: "keyword",
+                                            children: {
+                                                type: "expression",
+                                                variant: "where",
+                                                recursive: true,
+                                                left: {type: "object", variant: "column", token: "identifier"},
+                                                right: {type: "object", variant: "column", token: "identifier"},
+                                                operator: {type: "object", variant: "column", token: "punctuator"}
+                                            }
+                                        },
+                                    ]
+                                },
+                            ],
+                        }
+                    },
 
-                                    // from表达式后面紧跟的是 可忽略的,可递归的 Join 谓语
-                                    {
-                                        type: "predicate", variant: "join", recursive: true, ignore: true,
-                                    },
+                    delete: {
 
-                                    // join后面紧跟的是 where 子句, 由关键字 where 引导, 可忽略
-                                    {
-                                        type: "clause", variant: "where", token: "keyword", ignore: true,
-                                    },
+                        // AST根节点
+                        root: {
 
-                                    // where后面紧跟的是 表达式(即where引导的表达式)
-                                    {
-                                        type: "expression", variant: "where", recursive: true, ignore: true,
-                                    },
+                            type: "root",
+                            variant: "root",
+                            children: [
 
-                                    /*{
-                                        type: "clause", variant: "where", token: "keyword",
-                                        children: {
-                                            type: "expression",
-                                            variant: "where",
-                                            recursive: true,
-                                            left: {type: "object", variant: "column", token: "identifier"},
-                                            right: {type: "object", variant: "column", token: "identifier"},
-                                            operator: {type: "object", variant: "column", token: "punctuator"}
-                                        }
-                                    },*/
-                                ]
-                            },
+                                {
+                                    type: "statement",
+                                    variant: "delete",
+                                    token: "keyword",
 
-                            {
-                                type: "statement",
-                                variant: "insert",
-                            },
-                        ],
-                        siblings: null,
-                    }
+                                    children: [
+
+                                        // delete 后面紧跟的是 表达式(即delete引导的表达式)
+                                        {
+                                            type: "expression", variant: "delete", ignore: true
+                                        },
+
+                                        // 表达式后面紧跟的是 from 子句, 由关键字 from 引导
+                                        {
+                                            type: "clause", variant: "from", token: "keyword",
+                                        },
+
+                                        // from后面紧跟的是 表达式(即from引导的表达式)
+                                        {
+                                            type: "expression", variant: "from",
+                                        },
+
+                                        // from表达式后面紧跟的是 可忽略的,可递归的 Join 谓语
+                                        {
+                                            type: "predicate", variant: "join", recursive: true, ignore: true,
+                                        },
+
+                                        // join后面紧跟的是 where 子句, 由关键字 where 引导, 可忽略
+                                        {
+                                            type: "clause", variant: "where", token: "keyword", ignore: true,
+                                        },
+
+                                        // where后面紧跟的是 表达式(即where引导的表达式)
+                                        {
+                                            type: "expression", variant: "where", recursive: true, ignore: true,
+                                        },
+
+                                        /*{
+                                            type: "clause", variant: "where", token: "keyword",
+                                            children: {
+                                                type: "expression",
+                                                variant: "where",
+                                                recursive: true,
+                                                left: {type: "object", variant: "column", token: "identifier"},
+                                                right: {type: "object", variant: "column", token: "identifier"},
+                                                operator: {type: "object", variant: "column", token: "punctuator"}
+                                            }
+                                        },*/
+                                    ]
+                                },
+                            ],
+                        }
+                    },
+
+                    insert: {
+
+                        // AST根节点
+                        root: {
+
+                            type: "root",
+                            variant: "root",
+                            children: [
+
+                                {
+                                    type: "statement",
+                                    variant: "insert",
+                                },
+                            ],
+                        }
+                    },
                 },
 
                 // 语法模型中的成分常量
@@ -509,38 +575,26 @@
                 // token可能是哪种AST节点类型
                 tokenReferASTNodeType: {
 
-                    keyword: {
+                    statement: ["select", "update", "delete", "insert"],
 
-                        statement: 7000,
-                        clause: 7000,
-                        predicate: 7000,
-                    },
-                    identifier: {
+                    clause: ["from", "where", "order", "group", "having", "limit"],
 
-                        expression: 8000,
-                    },
-                    punctuator: {
+                    predicate: ["left", "right", "inner", "full", "join"],
 
-                        expression: 9000,
-                    },
-                    numeric: {
-
-                        expression: 10000,
-                    },
-                    string: {
-
-                        expression: 11000,
-                    }
+                    // 兜底
+                    expression: [],
                 }
 
             },
 
             globalVariableContainer: {
 
+                /**
+                 * SQL解析情况
+                 */
                 sql: "",
                 sql_error: false,
                 sql_error_msg: "",
-
 
                 /**
                  * lexicalAnalysis 词法分析阶段的产物
@@ -552,12 +606,11 @@
                 /**
                  * syntacticAnalysis 语法分析阶段的产物
                  */
-                statement_type: "", // 当前的 statement 类型
-                ast_outline: {},
-
-
-                // 当前的AST
-                ast: {},
+                statement_type: "", // 当前的 statement 类型(经过决策后的)
+                ast_outline: {}, // ast 轮廓
+                ast_outline_pruned: {}, // 剪枝后的 ast 轮廓
+                ast_outline_transformed: {}, // 转换后的 AST
+                ast: {}, // 经过优化后的最终的 AST
             },
 
             // 在期望的字符处插入空白
