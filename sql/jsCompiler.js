@@ -153,6 +153,8 @@
 
                     work() {
 
+                        // 如果语法错误则会生成一棵带有错误信息的AST, 并结束整个编译
+
                         // 先决策是哪种Statement
                         this.decisionStatement();
 
@@ -222,6 +224,7 @@
                             node = this.generateASTNode({
                                 type: node_type,
                                 variant: token_obj.value,
+                                value: token_obj.value,
                                 index: token_obj.index
                             });
 
@@ -237,9 +240,16 @@
 
                         // 内部会根据语法模型进行剪枝
                         let statement_type = SQLCompiler.prototype.tool.globalVariableContainer.statement_type;
-                        let syntacticModel = SQLCompiler.prototype.tool.constContainer.syntacticModel.statement_type;
+                        let syntacticModel = SQLCompiler.prototype.tool.constContainer.syntacticModel[statement_type];
 
-                        // 主要是对expression剪枝
+                        // 对 Clause 剪枝
+                        SQLCompiler.prototype.tool.pruning.diffClause();
+
+                        // 对 Predicate 剪枝
+                        SQLCompiler.prototype.tool.pruning.diffPredicate();
+
+                        // 对 Expression 剪枝
+                        SQLCompiler.prototype.tool.pruning.diffExpression();
 
                         SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned = root;
                     },
@@ -268,6 +278,8 @@
                             type: (typeof node.type !== "undefined") ? node.type : "root", // 节点类型
 
                             variant: (typeof node.variant !== "undefined") ? node.variant : "",
+
+                            value: (typeof node.value !== "undefined") ? node.value : "",
 
                             recursive: (typeof node.recursive !== "undefined") ? node.recursive : false,
 
@@ -390,7 +402,10 @@
                     }
                 },
 
-                // 语法模型
+                /**
+                 * 语法模型
+                 * 组成 : statement + clause + predicate + expression
+                 */
                 syntacticModel: {
 
                     select: {
@@ -418,6 +433,11 @@
                                         },
                                     ]
                                 },
+
+                                {
+                                    type: "expression",
+                                    variant:"column",
+                                }
                             ],
                         }
                     },
@@ -662,7 +682,24 @@
                 }
 
                 return arr;
+            },
+
+            // 修剪函数
+            pruning:{
+
+                diffClause(){
+
+                },
+
+                diffPredicate(){
+
+                },
+
+                diffExpression(){
+
+                },
             }
+
         }
     };
 
