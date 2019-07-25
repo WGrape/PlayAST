@@ -47,9 +47,9 @@
 
         obj.text( $("textarea").val() );
 
-        obj.SQLCompiler(obj.text());
-
         console.clear();
+
+        obj.SQLCompiler(obj.text());
 
         console.log("\n%c 第 1 阶段, 词法分析 :", 'color:#FF9800;');
         console.log("\n%c sql_cleared 如下:", 'color:green;');
@@ -66,6 +66,9 @@
 
         console.log("\n%c AST Outline 如下:", 'color:green;');
         console.log(obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutline());
+
+        console.log("\n%c AST Outline Pruned 如下:", 'color:green;');
+        console.log(obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutlinePruned());
     });
 
 </script>
