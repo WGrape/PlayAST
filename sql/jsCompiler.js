@@ -65,7 +65,11 @@
 
                     clear() {
 
-                        let sql = SQLCompiler.prototype.tool.globalVariableContainer.sql.toLowerCase();
+                        let sql = SQLCompiler.prototype.tool.globalVariableContainer.sql.toLowerCase().trim();
+                        if (";" !== sql[sql.length - 1]) {
+
+                            sql += ";";
+                        }
 
                         let breakpoint_obj = SQLCompiler.prototype.tool.constContainer.referenceTable.symbolTable;
                         delete breakpoint_obj['*']; // delete breakpoint_arr['.'];
@@ -108,22 +112,22 @@
 
                         // 词汇是关键字
                         let keywordTable = SQLCompiler.prototype.tool.constContainer.referenceTable.keywordTable;
-                        if (typeof keywordTable.curdStatement[lexicon] !== "undefined" || typeof keywordTable.selectStatement[lexicon] !== "undefined") {
+                        if (keywordTable.curdStatement[lexicon] || keywordTable.selectStatement[lexicon]) {
 
                             return {type: "Keyword", value: lexicon};
                         }
-                        if (typeof keywordTable.updateStatement[lexicon] !== "undefined" || typeof keywordTable.insertStatement[lexicon] !== "undefined") {
+                        if (keywordTable.updateStatement[lexicon] || keywordTable.insertStatement[lexicon]) {
 
                             return {type: "Keyword", value: lexicon};
                         }
-                        if (typeof keywordTable.deleteStatement[lexicon] !== "undefined") {
+                        if (keywordTable.deleteStatement[lexicon]) {
 
                             return {type: "Keyword", value: lexicon};
                         }
 
                         // 词汇是符号
                         let symbolTable = SQLCompiler.prototype.tool.constContainer.referenceTable.symbolTable;
-                        if (typeof symbolTable[lexicon] !== "undefined") {
+                        if (symbolTable[lexicon]) {
 
                             return {type: "Punctuator", value: lexicon};
                         }
@@ -228,7 +232,7 @@
                             let tokenValueMapVariant = SQLCompiler.prototype.tool.constContainer.tokenValueMapVariant;
                             node = this.generateASTNode({
                                 type: node_type,
-                                variant: (typeof tokenValueMapVariant[token_obj.value] !== "undefined") ? tokenValueMapVariant[token_obj.value] : token_obj.value,
+                                variant: (tokenValueMapVariant[token_obj.value]) ? tokenValueMapVariant[token_obj.value] : token_obj.value,
                                 value: token_obj.value,
                                 index: token_obj.index
                             });
@@ -244,6 +248,13 @@
                         // let root = Object.assign({}, SQLCompiler.prototype.tool.globalVariableContainer.ast_outline); 引用传递, 故使用 JSON.parse 来禁止引用传递
                         let root = JSON.parse(JSON.stringify(SQLCompiler.prototype.tool.globalVariableContainer.ast_outline));
 
+                        // 对 子查询 剪枝
+                        let sub_query_num = SQLCompiler.prototype.tool.getSubQueryNum();
+                        for (let i = 1; i <= sub_query_num; ++i) {
+
+                            SQLCompiler.prototype.tool.pruning.pruningSubQuery(root, i);
+                        }
+
                         // 对 Clause 剪枝
                         SQLCompiler.prototype.tool.pruning.pruningClause(root);
 
@@ -252,6 +263,9 @@
 
                         // 对 Expression 剪枝
                         SQLCompiler.prototype.tool.pruning.pruningExpression(root);
+
+                        // 对 空节点 剪枝
+                        root = SQLCompiler.prototype.tool.pruning.pruningEmptyNode(root);
 
                         SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned = root;
                     },
@@ -278,7 +292,6 @@
                         // 转换后的 AST
                         let root = SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_transformed;
 
-
                         SQLCompiler.prototype.tool.globalVariableContainer.ast = root;
                     },
 
@@ -286,27 +299,27 @@
 
                         let obj = Object.assign({}, node);
 
-                        if (typeof node.type === "undefined") {
+                        if (!node.type) {
 
                             obj.type = "root";
                         }
 
-                        if (typeof node.variant === "undefined") {
+                        if (!node.variant) {
 
                             obj.variant = "root";
                         }
 
-                        if (typeof node.value === "undefined") {
+                        if (!node.value) {
 
-                            obj.value = "root";
+                            // obj.value = "root";
                         }
 
-                        if (typeof node.index === "undefined") {
+                        if (!node.index) {
 
-                            obj.index = -1; // token 的下标(即可以查到当前所属的token)
+                            // obj.index = -1; // token 的下标(即可以查到当前所属的token)
                         }
 
-                        if (typeof node.children === "undefined") {
+                        if (!node.children) {
 
                             // obj.children = []; // token 下标
                         }
@@ -462,9 +475,9 @@
                                 },
 
                                 {
-                                    type: "set",
+                                    type: "grouping",
                                     variant: "",
-                                    set: [
+                                    grouping: [
 
                                         {
                                             type: "predicate",
@@ -480,9 +493,9 @@
                                 },
 
                                 {
-                                    type: "set",
+                                    type: "grouping",
                                     variant: "",
-                                    set: [
+                                    grouping: [
 
                                         {
                                             type: "clause",
@@ -498,9 +511,9 @@
                                 },
 
                                 {
-                                    type: "set",
+                                    type: "grouping",
                                     variant: "",
-                                    set: [
+                                    grouping: [
 
                                         {
                                             type: "clause",
@@ -516,9 +529,9 @@
                                 },
 
                                 {
-                                    type: "set",
+                                    type: "grouping",
                                     variant: "",
-                                    set: [
+                                    grouping: [
 
                                         {
                                             type: "clause",
@@ -534,9 +547,9 @@
                                 },
 
                                 {
-                                    type: "set",
+                                    type: "grouping",
                                     variant: "",
-                                    set: [
+                                    grouping: [
 
                                         {
                                             type: "clause",
@@ -731,9 +744,10 @@
                     "*": "all columns",
                     ".": "object operator",
                     // "on": "",
-                    ">":"operator",
-                    "<":"operator",
-                    "=":"operator",
+                    ">": "operator",
+                    "<": "operator",
+                    "=": "operator",
+                    ";": "close",
                 }
 
             },
@@ -775,7 +789,7 @@
                     return text.substring(0, stop) + replace_text + text.substring(stop + 1);
                 }
 
-                for (let i = 0; typeof str[i] !== "undefined";) {
+                for (let i = 0; str[i];) {
 
                     // 发现符号
                     let index = except_chars.indexOf(str[i]);
@@ -813,8 +827,113 @@
                 return arr;
             },
 
+            // 获取最后第N个右括号的下标
+            getLastNthRightBracketASTIndex(n) {
+
+                let ast_outline = SQLCompiler.prototype.tool.globalVariableContainer.ast_outline.children;
+                let length = ast_outline.length;
+
+                let times = 1;
+
+                for (let i = length - 1; i >= 0; --i) {
+
+                    if (")" === ast_outline[i].value) {
+
+                        if (times === n) {
+
+                            return i;
+                        }
+
+                        ++times;
+                    }
+                }
+
+                throw new Error("Not match right bracket");
+            },
+
+            // 获取子查询个数
+            getSubQueryNum() {
+
+                let token_table = SQLCompiler.prototype.tool.globalVariableContainer.tokenTable;
+                let num = 0;
+                token_table.forEach((item) => {
+
+                    if (item.value === "select") {
+
+                        ++num; // 有几个select就是有几个子查询
+                    }
+                });
+
+                num -= 1;
+
+                if (num > 2) {
+
+                    throw new Error("只支持2层嵌套子查询");
+                }
+
+                return num;
+            },
+
             // 修剪函数
             pruning: {
+
+                pruningEmptyNode(root) {
+
+                    let root_str = JSON.stringify(root);
+                    root = JSON.parse(root_str.replace(/,null/g, ""));
+                    return root;
+                },
+
+                pruningSubQuery(root, sub_query_level) {
+
+                    let ast_outline;
+                    if (1 === sub_query_level) {
+
+                        ast_outline = root.children;
+                    } else {
+
+                        for (let item of root.children) {
+
+                            if (item && item.subquery) {
+
+                                ast_outline = item.subquery;
+                            }
+                        }
+                    }
+
+                    let length = ast_outline.length;
+
+                    let left_bracket_num = 0;
+
+                    let start, end;
+
+                    // 上面delete后数组长度不变, 被删除的元素会变成undefined
+                    for (let i = 0; i <= length - 1 && ast_outline[i] && ast_outline[i].value; ++i) {
+
+                        if ("(" === ast_outline[i].value) {
+
+                            ++left_bracket_num;
+                        }
+
+                        // 如果出现子查询, 则全部都加到query中
+                        if ("(" === ast_outline[i].value && i - 1 >= 0 && ast_outline[i - 1].value === "from") {
+
+                            start = i;
+                            end = SQLCompiler.prototype.tool.getLastNthRightBracketASTIndex(left_bracket_num);
+                            let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
+
+                            // 把所有连续的 expression 都打入 node_subquery 中
+                            for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
+
+                                node_subquery.subquery.push(ast_outline[j]);
+                                delete ast_outline[j];
+                            }
+                            ast_outline[i] = node_subquery;
+
+                            break;
+                        }
+                    }
+                },
 
                 pruningClause(root) {
 
@@ -822,7 +941,7 @@
 
                     for (let node of ast_outline) {
 
-                        if ("clause" === node.type) {
+                        if (node && "clause" === node.type) {
 
                             if ("order" === node.value) {
 
@@ -841,7 +960,7 @@
 
                     for (let node of ast_outline) {
 
-                        if ("predicate" === node.type) {
+                        if (node && "predicate" === node.type) {
 
                             if ("left" === node.value) {
 
@@ -862,15 +981,21 @@
 
                     for (let i = 0; i <= length - 1;) {
 
-                        if ("expression" === ast_outline[i].type) {
+                        if (ast_outline[i] && "close" === ast_outline[i].variant) {
 
-                            let node_set = {type: "set", set: []};
+                            ast_outline[i].type = "close";
+                            break;
+                        }
 
-                            // 把所有连续的 expression 都打入 node_set 中
+                        if (ast_outline[i] && "expression" === ast_outline[i].type) {
+
+                            let node_grouping = {type: "grouping", grouping: []};
+
+                            // 把所有连续的 expression 都打入 node_grouping 中
                             let j = i;
                             while (j <= length - 1 && "expression" === ast_outline[j].type) {
 
-                                if (i - 1 >= 0) {
+                                if (i - 1 >= 0 && ast_outline[i - 1]) {
 
                                     if ("select" === ast_outline[i - 1].variant) {
 
@@ -885,13 +1010,13 @@
                                     ast_outline[j].token = token_table[ast_outline[j].index].type;
                                 }
 
-                                node_set.set.push(ast_outline[j]);
+                                node_grouping.grouping.push(ast_outline[j]);
                                 delete ast_outline[j];
                                 ++j;
                             }
 
                             // 从 i 至 j-1 都是连续的expression
-                            ast_outline[i] = node_set;
+                            ast_outline[i] = node_grouping;
 
                             i = j;
                             if (i === j) {
