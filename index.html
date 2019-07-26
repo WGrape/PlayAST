@@ -2,7 +2,15 @@
 
 <head>
 
+    <link rel="stylesheet" type="text/css" href="http://www.jq22.com/jquery/bootstrap-3.3.4.css">
+    <link href="plug/json-viewer/css/jquery.json-viewer.css" type="text/css" rel="stylesheet" />
+
     <style>
+
+        body{
+
+            margin-left: 20px;
+        }
 
         textarea {
 
@@ -30,47 +38,58 @@
 </head>
 <body>
 
-<p id="SQL"></p>
+<p id="SQL_Review"></p>
 
-<textarea>SELECT * FROM ( SELECT id, name FROM ( SELECT age FROM test as t1, test2 as t2 left join test3 as t3 on t2.u_id = t3.id WHERE id>0 AND id<87 AND name='test' and t1.id=t2.id group by t1.name ORDER BY id DESC LIMIT 5 ) )</textarea>
+<textarea id="SQL_Input">SELECT * FROM ( SELECT id, name FROM ( SELECT age FROM test as t1, test2 as t2 left join test3 as t3 on t2.u_id = t3.id WHERE id>0 AND id<87 AND name='test' and t1.id=t2.id group by t1.name ORDER BY id DESC LIMIT 5 ) )</textarea>
 
 <button>Go</button>
 
-<script src="https://cdn.bootcss.com/jquery/2.2.1/jquery.min.js"></script>
-<script src="./sql/jsCompiler.js"></script>
+<div style="margin-top: 30px;">
+    <pre id="json-renderer" style="width: 80%;padding-left: 30px;"></pre>
+</div>
 
+<script src="https://cdn.bootcss.com/jquery/2.2.1/jquery.min.js"></script>
+<script src="src/sql/jsCompiler.js"></script>
+<script src="plug/json-viewer/js/jquery.json-viewer.js"></script>
 <script>
 
     $(document).on("click", "button", function () {
 
-        let obj = $("#SQL"),result;
+        let result;
 
-        obj.text($("textarea").val());
+        let sql = $("#SQL_Input").val();
 
+        let sql_review_obj = $("#SQL_Review");
+
+        // 开始编译, 并清空控制台
         console.clear();
 
-        obj.SQLCompiler(obj.text());
+        sql_review_obj.SQLCompiler(sql);
 
         console.log("\n%c 第 1 阶段, 词法分析 :", 'color:#FF9800;');
         console.log("\n%c sql_cleared 如下:", 'color:green;');
-        console.log(obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLCleared());
+        console.log(sql_review_obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLCleared());
 
         console.log("\n%c 分词数组 如下:", 'color:green;');
-        console.log(obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLLexiconArr());
+        console.log(sql_review_obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLLexiconArr());
 
         console.log("\n%c Token Table 如下:", 'color:green;');
-        console.log(obj.SQLCompilerDebug.steps.lexicalAnalysis.getTokenTable());
+        console.log(sql_review_obj.SQLCompilerDebug.steps.lexicalAnalysis.getTokenTable());
 
         console.log("\n%c 第 2 阶段, 语法分析 :", 'color:#FF9800;');
-        console.log("\n%c statement_type 为 : " + obj.SQLCompilerDebug.steps.syntacticAnalysis.getStatementType(), 'color:green;');
+        console.log("\n%c statement_type 为 : " + sql_review_obj.SQLCompilerDebug.steps.syntacticAnalysis.getStatementType(), 'color:green;');
 
         console.log("\n%c AST Outline 如下:", 'color:green;');
-        console.log(obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutline());
+        console.log(sql_review_obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutline());
 
         console.log("\n%c AST Outline Pruned 如下:", 'color:green;');
-        result = obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutlinePruned();
+        result = sql_review_obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutlinePruned();
         console.log(result);
-        console.log(JSON.stringify(result));
+
+
+        sql_review_obj.text(sql);
+        let input = eval('(' + JSON.stringify(result) + ')');
+        $('#json-renderer').jsonViewer(input, {collapsed: false, withQuotes: false});
     });
 
 </script>
