@@ -4,12 +4,744 @@
  */
 (function () {
 
+    let constContainer = {
+
+        // 参考表
+        referenceTable: {
+
+            // 符号表
+            symbolTable: {
+
+                "'": 1001,
+                "\"": 1002,
+                "`": 1003,
+                ",": 1004,
+                ";": 1005,
+                "(": 1006,
+                ")": 1007,
+                "*": 1008,
+                "!": 1009,
+                "=": 1010,
+                ">": 1011,
+                "<": 1012,
+                ".": 1013,
+            },
+
+            // 关键字表
+            keywordTable: {
+
+                curdStatement: {
+
+                    "select": 2000,
+                    "update": 2001,
+                    "insert": 2002,
+                    "delete": 2003,
+                },
+
+                selectStatement: {
+
+                    "from": 20000,
+                    "where": 20001,
+                    "order": 20002,
+                    "by": 20003,
+                    "limit": 20004,
+                    "left": 20005,
+                    "right": 20006,
+                    "inner": 20007,
+                    "outer": 20008,
+                    "full": 20009,
+                    "join": 20010,
+                    "on": 20011,
+                    "group": 20012,
+                    "distinct": 20013,
+                    "like": 20014,
+                    "not": 20015,
+                    "between": 20016,
+                    "and": 20017,
+                    "in": 20018,
+                    "desc": 20019,
+                    "asc": 20020,
+                    "as": 20021,
+                },
+
+                updateStatement: {
+
+                    "set": 20010,
+                    "where": 20002,
+                },
+
+                insertStatement: {
+
+                    "into": 20020,
+                    "values": 20021,
+                },
+
+                deleteStatement: {
+
+                    "from": 20030,
+                    "where": 20031,
+                    "and": 20032,
+                }
+            },
+
+            // scope表
+            scopeTable: {},
+
+            // 支持的Token类型表
+            tokenTypeTable: {
+
+                "KeyWord": 5000,
+                "Identifier": 5001,
+                "Punctuator": 5002,
+                "Numeric": 5003,
+                "String": 5004,
+            }
+        },
+
+        /**
+         * 语法模型
+         * 组成 : statement + clause + predicate + expression
+         */
+        syntacticModel: {
+
+            select: {
+
+                // AST根节点
+                root: {
+
+                    type: "root",
+                    variant: "root",
+                    children: [
+
+                        {
+                            type: "statement",
+                            variant: "select",
+                            value: "select"
+                        },
+
+                        {
+                            type: "expression",
+                            variant: "select",
+                        },
+
+                        {
+                            type: "clause",
+                            variant: "from",
+                        },
+
+                        {
+                            type: "expression",
+                            variant: "from",
+                        },
+
+                        {
+                            type: "grouping",
+                            variant: "",
+                            grouping: [
+
+                                {
+                                    type: "predicate",
+                                    variant: "join",
+                                },
+
+                                {
+                                    type: "expression",
+                                    variant: "join",
+                                },
+                            ],
+                            negligible: true,
+                        },
+
+                        {
+                            type: "grouping",
+                            variant: "",
+                            grouping: [
+
+                                {
+                                    type: "clause",
+                                    variant: "group",
+                                },
+
+                                {
+                                    type: "expression",
+                                    variant: "group",
+                                },
+                            ],
+                            negligible: true,
+                        },
+
+                        {
+                            type: "grouping",
+                            variant: "",
+                            grouping: [
+
+                                {
+                                    type: "clause",
+                                    variant: "where",
+                                },
+
+                                {
+                                    type: "expression",
+                                    variant: "where",
+                                },
+                            ],
+                            negligible: true,
+                        },
+
+                        {
+                            type: "grouping",
+                            variant: "",
+                            grouping: [
+
+                                {
+                                    type: "clause",
+                                    variant: "order",
+                                },
+
+                                {
+                                    type: "expression",
+                                    variant: "order",
+                                },
+                            ],
+                            negligible: true,
+                        },
+
+                        {
+                            type: "grouping",
+                            variant: "",
+                            grouping: [
+
+                                {
+                                    type: "clause",
+                                    variant: "limit",
+                                },
+
+                                {
+                                    type: "expression",
+                                    variant: "limit",
+                                },
+                            ],
+                            negligible: true,
+                        },
+
+                    ],
+                }
+            },
+
+            update: {
+
+                // AST根节点
+                root: {
+
+                    type: "root",
+                    variant: "root",
+                    children: [
+
+                        {
+                            type: "statement",
+                            variant: "update",
+
+                            children: [
+
+                                {type: "identifier", variant: "table", token: "identifier"},
+                                {type: "clause", variant: "set", token: "keyword"},
+                                {
+                                    type: "clause", variant: "where", token: "keyword",
+                                    children: {
+                                        type: "expression",
+                                        variant: "where",
+                                        recursive: true,
+                                        left: {type: "object", variant: "column", token: "identifier"},
+                                        right: {type: "object", variant: "column", token: "identifier"},
+                                        operator: {type: "object", variant: "column", token: "punctuator"}
+                                    }
+                                },
+                            ]
+                        },
+                    ],
+                }
+            },
+
+            delete: {
+
+                // AST根节点
+                root: {
+
+                    type: "root",
+                    variant: "root",
+                    children: [
+
+                        {
+                            type: "statement",
+                            variant: "delete",
+                            token: "keyword",
+
+                            children: [
+
+                                // delete 后面紧跟的是 表达式(即delete引导的表达式)
+                                {
+                                    type: "expression", variant: "delete", ignore: true
+                                },
+
+                                // 表达式后面紧跟的是 from 子句, 由关键字 from 引导
+                                {
+                                    type: "clause", variant: "from", token: "keyword",
+                                },
+
+                                // from后面紧跟的是 表达式(即from引导的表达式)
+                                {
+                                    type: "expression", variant: "from",
+                                },
+
+                                // from表达式后面紧跟的是 可忽略的,可递归的 Join 谓语
+                                {
+                                    type: "predicate", variant: "join", recursive: true, ignore: true,
+                                },
+
+                                // join后面紧跟的是 where 子句, 由关键字 where 引导, 可忽略
+                                {
+                                    type: "clause", variant: "where", token: "keyword", ignore: true,
+                                },
+
+                                // where后面紧跟的是 表达式(即where引导的表达式)
+                                {
+                                    type: "expression", variant: "where", recursive: true, ignore: true,
+                                },
+
+                                /*{
+                                    type: "clause", variant: "where", token: "keyword",
+                                    children: {
+                                        type: "expression",
+                                        variant: "where",
+                                        recursive: true,
+                                        left: {type: "object", variant: "column", token: "identifier"},
+                                        right: {type: "object", variant: "column", token: "identifier"},
+                                        operator: {type: "object", variant: "column", token: "punctuator"}
+                                    }
+                                },*/
+                            ]
+                        },
+                    ],
+                }
+            },
+
+            insert: {
+
+                // AST根节点
+                root: {
+
+                    type: "root",
+                    variant: "root",
+                    children: [
+
+                        {
+                            type: "statement",
+                            variant: "insert",
+                        },
+                    ],
+                }
+            },
+        },
+
+        // 支持的AST节点
+        supportASTNode: {
+
+            // 支持的所有节点属性
+            properties: ["type", "variant", "value", "index", "children", "subquery", "sub_query_level", "grouping"],
+
+            // 支持的 type 属性值
+            propertyTypeAssignment: ["statement", "grouping", "clause", "subquery", "expression", "close"],
+
+            // 支持的 variant 属性值
+            propertyVariantAssignment: [
+                "select", "update", "insert", "delete",
+                "alias",
+                "all columns", "column",
+                "recursive",
+                "from",
+                "order",
+                "group",
+
+                "grouping", "clause", "subquery", "expression", "close"],
+
+        },
+
+        // token与AST的映射关系
+        tokenRelationAST: {
+
+            // token到句子的映射关系, 即一个token会充当句子中的什么成分(tokenMapToSentence), 即 token 可能是哪种AST节点类型
+            tokenReferASTNodeType: {
+
+                statement: ["select", "update", "delete", "insert"],
+
+                clause: ["from", "where", "order", "group", "having", "limit"],
+
+                predicate: ["left", "right", "inner", "full", "join"],
+
+                // 兜底
+                expression: [],
+            },
+
+            // token 值与 Variant的映射
+            tokenValueMapVariant: {
+
+                "as": "alias",
+                ",": "recursive",
+                "*": "all columns",
+                ".": "object operator",
+                // "on": "",
+                ">": "operator",
+                "<": "operator",
+                "=": "operator",
+                ";": "close",
+            }
+        },
+
+    };
+
+    let globalVariableContainer = {
+
+        /**
+         * Debug
+         */
+        debug: false,
+        debug_id: 1,
+
+        /**
+         * SQL解析情况
+         */
+        sql: "",
+        sql_error: false,
+        sql_error_msg: "",
+        syntactic_model: {}, // 当前的语法模型
+
+        /**
+         * lexicalAnalysis 词法分析阶段的产物
+         */
+        sql_cleared: "", // 清洁后的SQL
+        sql_lexicon_arr: "", // SQL词汇数组
+        tokenTable: [], // 当前的Token表
+
+        /**
+         * syntacticAnalysis 语法分析阶段的产物
+         */
+        statement_type: "", // 当前的 statement 类型(经过决策后的)
+        ast_outline: {}, // ast 轮廓
+        ast_outline_pruned: {}, // 剪枝后的 ast 轮廓
+        ast_outline_transformed: {}, // 转换后的 AST
+        ast: {}, // 经过优化后的最终的 AST
+    };
+
+    let tool = {
+
+        constContainer: constContainer,
+
+        globalVariableContainer: globalVariableContainer,
+
+        // 在期望的字符处插入空白
+        insertWhiteSpaceInExceptChars(str, except_chars) {
+
+            // function insertStr(source, start, newStr) { return source.slice(0, start) + newStr + source.slice(start) }
+
+            // https://blog.csdn.net/weixin_42203183/article/details/84257252
+            function replacePos(text, start, stop, replace_text) {
+
+                return text.substring(0, stop) + replace_text + text.substring(stop + 1);
+            }
+
+            for (let i = 0; str[i];) {
+
+                // 发现符号
+                let index = except_chars.indexOf(str[i]);
+                if (index >= 0) {
+
+                    str = replacePos(str, i, i, " " + except_chars[index] + " ");
+                    i = i + 3;
+                    continue;
+                }
+                ++i;
+            }
+
+            return str;
+        },
+
+        // 过滤数组空元素
+        trimArray(arr) {
+
+            return arr.filter((item) => item.length > 0 && item.trim() !== "");
+        },
+
+        // 对象转数组
+        objectPropertyToArray(obj) {
+
+            let arr = [];
+
+            for (let property in obj) {
+
+                if (obj.hasOwnProperty(property)) {
+
+                    arr.push(property); //属性
+                }
+            }
+
+            return arr;
+        },
+
+        // 获取最后第N个右括号的下标
+        getLastNthRightBracketASTIndex(n) {
+
+            let ast_outline = globalVariableContainer.ast_outline.children;
+            let length = ast_outline.length;
+
+            let times = 1;
+
+            for (let i = length - 1; i >= 0; --i) {
+
+                if (")" === ast_outline[i].value) {
+
+                    if (times === n) {
+
+                        return i;
+                    }
+
+                    ++times;
+                }
+            }
+
+            throw new Error("Not match right bracket");
+        },
+
+        // 获取子查询个数
+        getSubQueryNum() {
+
+            let token_table = globalVariableContainer.tokenTable;
+            let num = 0;
+            token_table.forEach((item) => {
+
+                if (item.value === "select") {
+
+                    ++num; // 有几个select就是有几个子查询
+                }
+            });
+
+            //num -= 1;
+
+            if (num > 2) {
+
+                //throw new Error("只支持2层嵌套子查询");
+            }
+
+            return num;
+        },
+
+        // 根据子查询级别获取ASTOutine TODO:代码待优化
+        returnASTOutlineBySubQueryLevel(root, sub_query_level) {
+
+            function getASTOutlineOfSubQueryLevel2(root) {
+
+                let ast_outline;
+                for (let item of root.children) {
+
+                    if (item && item.subquery) {
+
+                        ast_outline = item.subquery;
+                    }
+                }
+
+                return ast_outline;
+            }
+
+            let ast_outline;
+            if (1 === sub_query_level) {
+
+                ast_outline = root.children;
+            } else if (2 === sub_query_level) {
+
+                ast_outline = getASTOutlineOfSubQueryLevel2(root);
+            } else {
+
+                ast_outline = getASTOutlineOfSubQueryLevel2(root);
+                for (let item of ast_outline) {
+
+                    if (item && item.subquery) {
+
+                        ast_outline = item.subquery;
+                    }
+                }
+            }
+
+            return ast_outline;
+        },
+
+        // 修剪AST
+        pruning: {
+
+            start(root, sub_query_level) {
+
+                this.diffing.diffingNodePropertyType(root, sub_query_level);
+                this.diffing.diffingNodePropertyVariant(root, sub_query_level);
+
+                this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
+                root = this.collapsing.rebuildASTIndex(root);
+
+                this.collapsing.collapsingGroupingTypeNode(root, sub_query_level);
+                root = this.collapsing.rebuildASTIndex(root);
+
+                return root;
+            },
+
+            diffing: {
+
+                // diff节点的Type属性
+                diffingNodePropertyType(root, sub_query_level) {
+
+                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                    let token_table = tool.globalVariableContainer.tokenTable;
+
+                    for (let node of ast_outline) {
+
+                        // 只要是 expression 统一加上 token 属性
+                        if (node && "expression" === node.type) {
+
+                            // 预处理, 把expression类型的AST节点都加上token字段
+                            node.token = token_table[node.index].type;
+                        }
+
+                        // 对 Clause 剪枝
+                        if (node && "clause" === node.type) {
+
+                            if (["order", "group"].indexOf(node.value) > -1) {
+
+                                node.variant = node.value + " by";
+                            }
+                        }
+
+                        // 对 Predicate 剪枝
+                        else if (node && "predicate" === node.type) {
+
+                            if (["left", "right", "inner"].indexOf(node.value) > -1) {
+
+                                node.variant = node.value + " join";
+                            }
+                        }
+                    }
+                },
+
+                // diff节点的Variant属性
+                diffingNodePropertyVariant(root, sub_query_level) {
+
+                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                    let length = ast_outline.length;
+
+                    let tokenValueMapVariant = constContainer.tokenRelationAST.tokenValueMapVariant;
+                    for (let i = 0; i <= length - 1; ++i) {
+
+                        let pre_node = ast_outline[i - 1];
+                        let node = ast_outline[i];
+
+                        if (pre_node && node.variant) {
+
+                            node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
+
+                            if ("select" === pre_node.variant) {
+
+                                node.variant = (node.variant === node.value) ? "column" : node.variant;
+                            } else if ("from" === pre_node.variant) {
+
+                                node.variant = (node.variant === node.value) ? "table" : node.variant;
+                            } else if ("where" === pre_node.variant) {
+
+                                node.variant = (node.variant === node.value) ? "condition" : node.variant;
+                            }
+                        }
+                    }
+                },
+            },
+
+            // 折叠函数
+            collapsing: {
+
+                // 折叠出 Subquery 节点
+                collapsingGroupingTypeNode(root, sub_query_level) {
+
+                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                    let length = ast_outline.length;
+
+                    for (let i = 0; i <= length - 1;++i) {
+
+                        let node = ast_outline[i];
+
+                        if (node && "close" !== node.variant && "expression" === node.type && "Keyword" !== node.token) {
+
+                            let node_grouping = {type: "grouping", grouping: []};
+
+                            // 把所有连续的 expression 都打入 node_grouping 中
+                            let j = i;
+                            while (j <= length - 1 && "expression" === ast_outline[j].type) {
+
+                                node_grouping.grouping.push(ast_outline[j]);
+                                delete ast_outline[j];
+                                ++j;
+                            }
+
+                            // 从 i 至 j-1 都是连续的expression
+                            ast_outline[i] = node_grouping;
+
+                            i = j;
+                        }
+                    }
+                },
+
+                // 折叠出 Grouping 类型的节点
+                collapsingSubqueryTypeNode(root, sub_query_level) {
+
+                    // 整理出来 Subquery, Grouping 之类的
+                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                    let length = ast_outline.length, left_bracket_num = 0, start, end;
+
+                    for (let i = 0; i <= length - 1 && ast_outline[i] && ast_outline[i].value; ++i) {
+
+                        if ("(" === ast_outline[i].value) {
+
+                            ++left_bracket_num;
+                        }
+
+                        // 如果出现子查询, 则全部都加到query中
+                        if ("(" === ast_outline[i].value && i - 1 >= 0 && ast_outline[i - 1].value === "from") {
+
+                            start = i;
+                            end = tool.getLastNthRightBracketASTIndex(left_bracket_num);
+                            let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
+
+                            // 把所有连续的 expression 都打入 node_subquery 中
+                            for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
+
+                                node_subquery.subquery.push(ast_outline[j]);
+                                delete ast_outline[j];
+                            }
+                            ast_outline[i] = node_subquery;
+
+                            break;
+                        }
+                    }
+                },
+
+                // 因为折叠会出现索引连续不上和length不变的情况, 故而需要清理掉zombie数据
+                rebuildASTIndex(root) {
+
+                    let root_str = JSON.stringify(root);
+                    return JSON.parse(root_str.replace(/,null/g, ""));
+                },
+            },
+        },
+    };
+
     let SQLCompiler = function (sql = "") {
 
-        SQLCompiler.prototype.tool.globalVariableContainer.sql = sql;
-    }, debugMsg = function (msg = "", color = "color:black", level = 0) {
+        globalVariableContainer.sql = sql;
+    };
 
-        let globalVariableContainer = SQLCompiler.prototype.tool.globalVariableContainer;
+    let debugMsg = function (msg = "", color = "color:black", level = 0) {
 
         if (!globalVariableContainer.debug) {
             return;
@@ -90,34 +822,34 @@
                     clear() {
 
                         // 对SQL进行trim处理, 如果没有分号, 则添加
-                        let sql = SQLCompiler.prototype.tool.globalVariableContainer.sql.toLowerCase().trim();
+                        let sql = globalVariableContainer.sql.toLowerCase().trim();
                         if (";" !== sql[sql.length - 1]) {
 
                             sql += ";";
                         }
 
                         // 对SQL中的目标字符两侧添加空白符
-                        let breakpoint_obj = SQLCompiler.prototype.tool.constContainer.referenceTable.symbolTable;
+                        let breakpoint_obj = constContainer.referenceTable.symbolTable;
                         delete breakpoint_obj['*']; // delete breakpoint_arr['.'];
                         delete breakpoint_obj['"'];
                         delete breakpoint_obj["'"];
-                        let breakpoint_arr = SQLCompiler.prototype.tool.objectPropertyToArray(breakpoint_obj);
+                        let breakpoint_arr = tool.objectPropertyToArray(breakpoint_obj);
 
-                        SQLCompiler.prototype.tool.globalVariableContainer.sql_cleared = SQLCompiler.prototype.tool.insertWhiteSpaceInExceptChars(sql, breakpoint_arr);
+                        globalVariableContainer.sql_cleared = tool.insertWhiteSpaceInExceptChars(sql, breakpoint_arr);
                     },
 
                     demarcate() {
 
-                        let sql = SQLCompiler.prototype.tool.globalVariableContainer.sql_cleared;
+                        let sql = globalVariableContainer.sql_cleared;
 
                         // 使用空格split, 并过滤掉空元素
-                        SQLCompiler.prototype.tool.globalVariableContainer.sql_lexicon_arr = SQLCompiler.prototype.tool.trimArray(sql.split(" "));
+                        globalVariableContainer.sql_lexicon_arr = tool.trimArray(sql.split(" "));
                     },
 
                     createTokenTable() {
 
                         let token_arr = [];
-                        let lexicon_arr = SQLCompiler.prototype.tool.globalVariableContainer.sql_lexicon_arr;
+                        let lexicon_arr = globalVariableContainer.sql_lexicon_arr;
 
                         let index = 0;
                         for (let lexicon of lexicon_arr) {
@@ -128,7 +860,7 @@
                         }
 
                         // token 表创建成功
-                        SQLCompiler.prototype.tool.globalVariableContainer.tokenTable = token_arr;
+                        globalVariableContainer.tokenTable = token_arr;
                     },
 
                     // 根据 lexicon 词汇类型, 生成 token node
@@ -137,7 +869,7 @@
                         // {type:"",value:""}
 
                         // 词汇是关键字
-                        let keywordTable = SQLCompiler.prototype.tool.constContainer.referenceTable.keywordTable;
+                        let keywordTable = constContainer.referenceTable.keywordTable;
                         if (keywordTable.curdStatement[lexicon] || keywordTable.selectStatement[lexicon]) {
 
                             return {type: "Keyword", value: lexicon};
@@ -152,7 +884,7 @@
                         }
 
                         // 词汇是符号
-                        let symbolTable = SQLCompiler.prototype.tool.constContainer.referenceTable.symbolTable;
+                        let symbolTable = constContainer.referenceTable.symbolTable;
                         if (symbolTable[lexicon]) {
 
                             return {type: "Punctuator", value: lexicon};
@@ -195,9 +927,6 @@
                         // 为 AST Outline 剪枝
                         this.makeASTOutlinePruning();
 
-                        // 为 AST Outline diff
-                        this.makeASTOutlineDiffing();
-
                         // 将转换 AST Outline 转换成一棵 AST
                         this.makeASTOutlineTransforming();
 
@@ -210,30 +939,30 @@
                     decideStatement() {
 
                         // 根据token表中的第一个数据判断即可
-                        let token_table = SQLCompiler.prototype.tool.globalVariableContainer.tokenTable;
+                        let token_table = globalVariableContainer.tokenTable;
                         switch (token_table[0].value) {
 
                             case "select":
                             case "update":
                             case "delete":
                             case "insert":
-                                SQLCompiler.prototype.tool.globalVariableContainer.statement_type = token_table[0].value;
+                                globalVariableContainer.statement_type = token_table[0].value;
                                 break;
 
                             default:
                                 let msg = "只支持CURD操作";
-                                SQLCompiler.prototype.tool.globalVariableContainer.sql_error = true;
-                                SQLCompiler.prototype.tool.globalVariableContainer.sql_error_msg = msg;
+                                globalVariableContainer.sql_error = true;
+                                globalVariableContainer.sql_error_msg = msg;
                                 throw new Error(msg);
                         }
                     },
 
                     createASTOutline() {
 
-                        let token_table = SQLCompiler.prototype.tool.globalVariableContainer.tokenTable;
+                        let token_table = globalVariableContainer.tokenTable;
                         let root = this.generateASTNode({children: []});
 
-                        let tokenReferASTNodeType = SQLCompiler.prototype.tool.constContainer.tokenRelationAST.tokenReferASTNodeType;
+                        let tokenReferASTNodeType = constContainer.tokenRelationAST.tokenReferASTNodeType;
 
                         for (let token_obj of token_table) {
 
@@ -265,7 +994,7 @@
                             node !== null && root.children.push(node);
                         }
 
-                        SQLCompiler.prototype.tool.globalVariableContainer.ast_outline = root;
+                        globalVariableContainer.ast_outline = root;
                     },
 
                     /**
@@ -273,54 +1002,32 @@
                      */
                     makeASTOutlinePruning() {
 
-                        // let root = Object.assign({}, SQLCompiler.prototype.tool.globalVariableContainer.ast_outline); 引用传递, 故使用 JSON.parse 来禁止引用传递
-                        let root = JSON.parse(JSON.stringify(SQLCompiler.prototype.tool.globalVariableContainer.ast_outline));
+                        let sub_query_num = tool.getSubQueryNum();
+                        let root = JSON.parse(JSON.stringify(globalVariableContainer.ast_outline)); // let root = Object.assign({}, globalVariableContainer.ast_outline); 引用传递, 故使用 JSON.parse 来禁止引用传递
 
-                        let pruning = SQLCompiler.prototype.tool.pruning;
-                        let sub_query_num = SQLCompiler.prototype.tool.getSubQueryNum();
+                        // 开始修剪
                         for (let i = 1; i <= sub_query_num; ++i) {
 
-                            SQLCompiler.prototype.tool.diffing.start(root, i);
-                            root = pruning.start(root, i);
+                            root = tool.pruning.start(root, i);
                         }
 
-                        SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned = root;
+                        globalVariableContainer.ast_outline_pruned = root;
                     },
-
-                    makeASTOutlineDiffing() {
-return;
-                        let root = JSON.parse(JSON.stringify(SQLCompiler.prototype.tool.globalVariableContainer.ast_outline));
-                        let diffing = SQLCompiler.prototype.tool.diffing;
-                        let sub_query_num = SQLCompiler.prototype.tool.getSubQueryNum();
-
-                        // 选择当前的语法模型
-                        let statement_type = SQLCompiler.prototype.tool.globalVariableContainer.statement_type;
-                        SQLCompiler.prototype.tool.globalVariableContainer.syntactic_model = SQLCompiler.prototype.tool.constContainer.syntacticModel[statement_type];
-
-                        // 根据语法模型进行diff
-                        for (let i = 1; i <= sub_query_num; ++i) {
-
-                            diffing.start(root, i);
-                        }
-
-                        SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned = root;
-                    },
-
 
                     makeASTOutlineTransforming() {
 
                         // 剪枝后的 ast outline
-                        let root = SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned;
+                        let root = globalVariableContainer.ast_outline_pruned;
 
-                        SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_transformed = root;
+                        globalVariableContainer.ast_outline_transformed = root;
                     },
 
                     optimizeAST() {
 
                         // 转换后的 AST
-                        let root = SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_transformed;
+                        let root = globalVariableContainer.ast_outline_transformed;
 
-                        SQLCompiler.prototype.tool.globalVariableContainer.ast = root;
+                        globalVariableContainer.ast = root;
                     },
 
                     generateASTNode(node = {}) {
@@ -343,744 +1050,10 @@ return;
 
         },
 
-        tool: {
-
-            constContainer: {
-
-                // 参考表
-                referenceTable: {
-
-                    // 符号表
-                    symbolTable: {
-
-                        "'": 1001,
-                        "\"": 1002,
-                        "`": 1003,
-                        ",": 1004,
-                        ";": 1005,
-                        "(": 1006,
-                        ")": 1007,
-                        "*": 1008,
-                        "!": 1009,
-                        "=": 1010,
-                        ">": 1011,
-                        "<": 1012,
-                        ".": 1013,
-                    },
-
-                    // 关键字表
-                    keywordTable: {
-
-                        curdStatement: {
-
-                            "select": 2000,
-                            "update": 2001,
-                            "insert": 2002,
-                            "delete": 2003,
-                        },
-
-                        selectStatement: {
-
-                            "from": 20000,
-                            "where": 20001,
-                            "order": 20002,
-                            "by": 20003,
-                            "limit": 20004,
-                            "left": 20005,
-                            "right": 20006,
-                            "inner": 20007,
-                            "outer": 20008,
-                            "full": 20009,
-                            "join": 20010,
-                            "on": 20011,
-                            "group": 20012,
-                            "distinct": 20013,
-                            "like": 20014,
-                            "not": 20015,
-                            "between": 20016,
-                            "and": 20017,
-                            "in": 20018,
-                            "desc": 20019,
-                            "asc": 20020,
-                            "as": 20021,
-                        },
-
-                        updateStatement: {
-
-                            "set": 20010,
-                            "where": 20002,
-                        },
-
-                        insertStatement: {
-
-                            "into": 20020,
-                            "values": 20021,
-                        },
-
-                        deleteStatement: {
-
-                            "from": 20030,
-                            "where": 20031,
-                            "and": 20032,
-                        }
-                    },
-
-                    // scope表
-                    scopeTable: {},
-
-                    // 支持的Token类型表
-                    tokenTypeTable: {
-
-                        "KeyWord": 5000,
-                        "Identifier": 5001,
-                        "Punctuator": 5002,
-                        "Numeric": 5003,
-                        "String": 5004,
-                    }
-                },
-
-                /**
-                 * 语法模型
-                 * 组成 : statement + clause + predicate + expression
-                 */
-                syntacticModel: {
-
-                    select: {
-
-                        // AST根节点
-                        root: {
-
-                            type: "root",
-                            variant: "root",
-                            children: [
-
-                                {
-                                    type: "statement",
-                                    variant: "select",
-                                    value: "select"
-                                },
-
-                                {
-                                    type: "expression",
-                                    variant: "select",
-                                },
-
-                                {
-                                    type: "clause",
-                                    variant: "from",
-                                },
-
-                                {
-                                    type: "expression",
-                                    variant: "from",
-                                },
-
-                                {
-                                    type: "grouping",
-                                    variant: "",
-                                    grouping: [
-
-                                        {
-                                            type: "predicate",
-                                            variant: "join",
-                                        },
-
-                                        {
-                                            type: "expression",
-                                            variant: "join",
-                                        },
-                                    ],
-                                    negligible: true,
-                                },
-
-                                {
-                                    type: "grouping",
-                                    variant: "",
-                                    grouping: [
-
-                                        {
-                                            type: "clause",
-                                            variant: "group",
-                                        },
-
-                                        {
-                                            type: "expression",
-                                            variant: "group",
-                                        },
-                                    ],
-                                    negligible: true,
-                                },
-
-                                {
-                                    type: "grouping",
-                                    variant: "",
-                                    grouping: [
-
-                                        {
-                                            type: "clause",
-                                            variant: "where",
-                                        },
-
-                                        {
-                                            type: "expression",
-                                            variant: "where",
-                                        },
-                                    ],
-                                    negligible: true,
-                                },
-
-                                {
-                                    type: "grouping",
-                                    variant: "",
-                                    grouping: [
-
-                                        {
-                                            type: "clause",
-                                            variant: "order",
-                                        },
-
-                                        {
-                                            type: "expression",
-                                            variant: "order",
-                                        },
-                                    ],
-                                    negligible: true,
-                                },
-
-                                {
-                                    type: "grouping",
-                                    variant: "",
-                                    grouping: [
-
-                                        {
-                                            type: "clause",
-                                            variant: "limit",
-                                        },
-
-                                        {
-                                            type: "expression",
-                                            variant: "limit",
-                                        },
-                                    ],
-                                    negligible: true,
-                                },
-
-                            ],
-                        }
-                    },
-
-                    update: {
-
-                        // AST根节点
-                        root: {
-
-                            type: "root",
-                            variant: "root",
-                            children: [
-
-                                {
-                                    type: "statement",
-                                    variant: "update",
-
-                                    children: [
-
-                                        {type: "identifier", variant: "table", token: "identifier"},
-                                        {type: "clause", variant: "set", token: "keyword"},
-                                        {
-                                            type: "clause", variant: "where", token: "keyword",
-                                            children: {
-                                                type: "expression",
-                                                variant: "where",
-                                                recursive: true,
-                                                left: {type: "object", variant: "column", token: "identifier"},
-                                                right: {type: "object", variant: "column", token: "identifier"},
-                                                operator: {type: "object", variant: "column", token: "punctuator"}
-                                            }
-                                        },
-                                    ]
-                                },
-                            ],
-                        }
-                    },
-
-                    delete: {
-
-                        // AST根节点
-                        root: {
-
-                            type: "root",
-                            variant: "root",
-                            children: [
-
-                                {
-                                    type: "statement",
-                                    variant: "delete",
-                                    token: "keyword",
-
-                                    children: [
-
-                                        // delete 后面紧跟的是 表达式(即delete引导的表达式)
-                                        {
-                                            type: "expression", variant: "delete", ignore: true
-                                        },
-
-                                        // 表达式后面紧跟的是 from 子句, 由关键字 from 引导
-                                        {
-                                            type: "clause", variant: "from", token: "keyword",
-                                        },
-
-                                        // from后面紧跟的是 表达式(即from引导的表达式)
-                                        {
-                                            type: "expression", variant: "from",
-                                        },
-
-                                        // from表达式后面紧跟的是 可忽略的,可递归的 Join 谓语
-                                        {
-                                            type: "predicate", variant: "join", recursive: true, ignore: true,
-                                        },
-
-                                        // join后面紧跟的是 where 子句, 由关键字 where 引导, 可忽略
-                                        {
-                                            type: "clause", variant: "where", token: "keyword", ignore: true,
-                                        },
-
-                                        // where后面紧跟的是 表达式(即where引导的表达式)
-                                        {
-                                            type: "expression", variant: "where", recursive: true, ignore: true,
-                                        },
-
-                                        /*{
-                                            type: "clause", variant: "where", token: "keyword",
-                                            children: {
-                                                type: "expression",
-                                                variant: "where",
-                                                recursive: true,
-                                                left: {type: "object", variant: "column", token: "identifier"},
-                                                right: {type: "object", variant: "column", token: "identifier"},
-                                                operator: {type: "object", variant: "column", token: "punctuator"}
-                                            }
-                                        },*/
-                                    ]
-                                },
-                            ],
-                        }
-                    },
-
-                    insert: {
-
-                        // AST根节点
-                        root: {
-
-                            type: "root",
-                            variant: "root",
-                            children: [
-
-                                {
-                                    type: "statement",
-                                    variant: "insert",
-                                },
-                            ],
-                        }
-                    },
-                },
-
-                // 支持的AST节点
-                supportASTNode: {
-
-                    // 支持的所有节点属性
-                    properties: ["type", "variant", "value", "index", "children", "subquery", "sub_query_level", "grouping"],
-
-                    // 支持的 type 属性值
-                    propertyTypeAssignment: ["statement", "grouping", "clause", "subquery", "expression", "close"],
-
-                    // 支持的 variant 属性值
-                    propertyVariantAssignment: [
-                        "select", "update", "insert", "delete",
-                        "alias",
-                        "all columns", "column",
-                        "recursive",
-                        "from",
-                        "order",
-                        "group",
-
-                        "grouping", "clause", "subquery", "expression", "close"],
-
-                },
-
-                // token与AST的映射关系
-                tokenRelationAST: {
-
-                    // token到句子的映射关系, 即一个token会充当句子中的什么成分(tokenMapToSentence), 即 token 可能是哪种AST节点类型
-                    tokenReferASTNodeType: {
-
-                        statement: ["select", "update", "delete", "insert"],
-
-                        clause: ["from", "where", "order", "group", "having", "limit"],
-
-                        predicate: ["left", "right", "inner", "full", "join"],
-
-                        // 兜底
-                        expression: [],
-                    },
-
-                    // token 值与 Variant的映射
-                    tokenValueMapVariant: {
-
-                        "as": "alias",
-                        ",": "recursive",
-                        "*": "all columns",
-                        ".": "object operator",
-                        // "on": "",
-                        ">": "operator",
-                        "<": "operator",
-                        "=": "operator",
-                        ";": "close",
-                    }
-                },
-
-            },
-
-            globalVariableContainer: {
-
-                /**
-                 * Debug
-                 */
-                debug: false,
-                debug_id: 1,
-
-                /**
-                 * SQL解析情况
-                 */
-                sql: "",
-                sql_error: false,
-                sql_error_msg: "",
-                syntactic_model: {}, // 当前的语法模型
-
-                /**
-                 * lexicalAnalysis 词法分析阶段的产物
-                 */
-                sql_cleared: "", // 清洁后的SQL
-                sql_lexicon_arr: "", // SQL词汇数组
-                tokenTable: [], // 当前的Token表
-
-                /**
-                 * syntacticAnalysis 语法分析阶段的产物
-                 */
-                statement_type: "", // 当前的 statement 类型(经过决策后的)
-                ast_outline: {}, // ast 轮廓
-                ast_outline_pruned: {}, // 剪枝后的 ast 轮廓
-                ast_outline_transformed: {}, // 转换后的 AST
-                ast: {}, // 经过优化后的最终的 AST
-            },
-
-            // 在期望的字符处插入空白
-            insertWhiteSpaceInExceptChars(str, except_chars) {
-
-                // function insertStr(source, start, newStr) { return source.slice(0, start) + newStr + source.slice(start) }
-
-                // https://blog.csdn.net/weixin_42203183/article/details/84257252
-                function replacePos(text, start, stop, replace_text) {
-
-                    return text.substring(0, stop) + replace_text + text.substring(stop + 1);
-                }
-
-                for (let i = 0; str[i];) {
-
-                    // 发现符号
-                    let index = except_chars.indexOf(str[i]);
-                    if (index >= 0) {
-
-                        str = replacePos(str, i, i, " " + except_chars[index] + " ");
-                        i = i + 3;
-                        continue;
-                    }
-                    ++i;
-                }
-
-                return str;
-            },
-
-            // 过滤数组空元素
-            trimArray(arr) {
-
-                return arr.filter((item) => item.length > 0 && item.trim() !== "");
-            },
-
-            // 对象转数组
-            objectPropertyToArray(obj) {
-
-                let arr = [];
-
-                for (let property in obj) {
-
-                    if (obj.hasOwnProperty(property)) {
-
-                        arr.push(property); //属性
-                    }
-                }
-
-                return arr;
-            },
-
-            // 获取最后第N个右括号的下标
-            getLastNthRightBracketASTIndex(n) {
-
-                let ast_outline = SQLCompiler.prototype.tool.globalVariableContainer.ast_outline.children;
-                let length = ast_outline.length;
-
-                let times = 1;
-
-                for (let i = length - 1; i >= 0; --i) {
-
-                    if (")" === ast_outline[i].value) {
-
-                        if (times === n) {
-
-                            return i;
-                        }
-
-                        ++times;
-                    }
-                }
-
-                throw new Error("Not match right bracket");
-            },
-
-            // 获取子查询个数
-            getSubQueryNum() {
-
-                let token_table = SQLCompiler.prototype.tool.globalVariableContainer.tokenTable;
-                let num = 0;
-                token_table.forEach((item) => {
-
-                    if (item.value === "select") {
-
-                        ++num; // 有几个select就是有几个子查询
-                    }
-                });
-
-                //num -= 1;
-
-                if (num > 2) {
-
-                    //throw new Error("只支持2层嵌套子查询");
-                }
-
-                return num;
-            },
-
-            // 根据子查询级别获取ASTOutine TODO:代码待优化
-            returnASTOutlineBySubQueryLevel(root, sub_query_level) {
-
-                function getASTOutlineOfSubQueryLevel2(root) {
-
-                    let ast_outline;
-                    for (let item of root.children) {
-
-                        if (item && item.subquery) {
-
-                            ast_outline = item.subquery;
-                        }
-                    }
-
-                    return ast_outline;
-                }
-
-                let ast_outline;
-                if (1 === sub_query_level) {
-
-                    ast_outline = root.children;
-                } else if (2 === sub_query_level) {
-
-                    ast_outline = getASTOutlineOfSubQueryLevel2(root);
-                } else {
-
-                    ast_outline = getASTOutlineOfSubQueryLevel2(root);
-                    for (let item of ast_outline) {
-
-                        if (item && item.subquery) {
-
-                            ast_outline = item.subquery;
-                        }
-                    }
-                }
-
-                return ast_outline;
-            },
-
-            // 修剪AST
-            pruning: {
-
-                start(root, sub_query_level) {
-
-                    this.collapsing.collapsingGroupingTypeNode(root, sub_query_level);
-                    root = this.collapsing.rebuildASTIndex(root);
-
-                    this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
-                    return this.collapsing.rebuildASTIndex(root);
-                },
-
-                // 折叠函数
-                collapsing: {
-
-                    // 折叠出 Subquery 节点
-                    collapsingGroupingTypeNode(root, sub_query_level) {
-
-                        let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
-                        let length = ast_outline.length;
-
-                        for (let i = 0; i <= length - 1;) {
-
-                            let node = ast_outline[i];
-
-                            if (node && "close" !== node.variant && "expression" === node.type && "Keyword" !== node.token) {
-
-                                let node_grouping = {type: "grouping", grouping: []};
-
-                                // 把所有连续的 expression 都打入 node_grouping 中
-                                let j = i;
-                                while (j <= length - 1 && "expression" === ast_outline[j].type) {
-
-                                    node_grouping.grouping.push(ast_outline[j]);
-                                    delete ast_outline[j];
-                                    ++j;
-                                }
-
-                                // 从 i 至 j-1 都是连续的expression
-                                node = node_grouping;
-
-                                i = j;
-                                if (i === j) {
-
-                                    ++i;
-                                }
-                                continue;
-                            }
-
-                            ++i;
-                        }
-                    },
-
-                    // 折叠出 Grouping 类型的节点
-                    collapsingSubqueryTypeNode(root, sub_query_level) {
-
-                        // 整理出来 Subquery, Grouping 之类的
-                        let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
-                        let length = ast_outline.length, left_bracket_num = 0, start, end;
-
-                        for (let i = 0; i <= length - 1 && ast_outline[i] && ast_outline[i].value; ++i) {
-
-                            if ("(" === ast_outline[i].value) {
-
-                                ++left_bracket_num;
-                            }
-
-                            // 如果出现子查询, 则全部都加到query中
-                            if ("(" === ast_outline[i].value && i - 1 >= 0 && ast_outline[i - 1].value === "from") {
-
-                                start = i;
-                                end = SQLCompiler.prototype.tool.getLastNthRightBracketASTIndex(left_bracket_num);
-                                let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
-
-                                // 把所有连续的 expression 都打入 node_subquery 中
-                                for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
-
-                                    node_subquery.subquery.push(ast_outline[j]);
-                                    delete ast_outline[j];
-                                }
-                                ast_outline[i] = node_subquery;
-
-                                break;
-                            }
-                        }
-                    },
-
-                    // 因为折叠会出现索引连续不上和length不变的情况, 故而需要清理掉zombie数据
-                    rebuildASTIndex(root) {
-
-                        let root_str = JSON.stringify(root);
-                        return JSON.parse(root_str.replace(/,null/g, ""));
-                    },
-                }
-            },
-
-            // diffAST
-            diffing: {
-
-                start(root, sub_query_level) {
-
-                    this.diffingNodePropertyType(root, sub_query_level);
-                    this.diffingNodePropertyVariant(root, sub_query_level);
-                },
-
-                // diff节点的Type属性
-                diffingNodePropertyType(root, sub_query_level) {
-
-                    let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
-                    let token_table = SQLCompiler.prototype.tool.globalVariableContainer.tokenTable;
-
-                    for (let node of ast_outline) {
-
-                        // 对 Expression 剪枝
-                        if (node && "expression" === node.type) {
-
-                            // 预处理, 把expression类型的AST节点都加上token字段
-                            node.token = token_table[node.index].type;
-                        }
-
-                        // 对 Clause 剪枝
-                        else if (node && "clause" === node.type) {
-
-                            if (["order", "group"].indexOf(node.value) > -1) {
-
-                                node.variant = node.value + " by";
-                            }
-                        }
-
-                        // 对 Predicate 剪枝
-                        else if (node && "predicate" === node.type) {
-
-                            if (["left", "right", "inner"].indexOf(node.value) > -1) {
-
-                                node.variant = node.value + " by";
-                            }
-                        }
-                    }
-                },
-
-                // diff节点的Variant属性
-                diffingNodePropertyVariant(root, sub_query_level) {
-
-                    let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
-                    let length = ast_outline.length;
-
-                    let tokenValueMapVariant = SQLCompiler.prototype.tool.constContainer.tokenRelationAST.tokenValueMapVariant;
-                    for (let i = 0; i <= length - 1; ++i) {
-
-                        let pre_node = ast_outline[i - 1];
-                        let node = ast_outline[i];
-
-                        if (pre_node && node.variant) {
-
-                            node.variant = (tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.value;
-
-                            if ("select" === pre_node.variant) {
-
-                                node.variant = (node.variant === node.value) ? "column" : node.variant;
-                            } else if ("from" === pre_node.variant) {
-
-                                node.variant = (node.variant === node.value) ? "table" : node.variant;
-                            } else if ("where" === pre_node.variant) {
-
-                                node.variant = (node.variant === node.value) ? "condition" : node.variant;
-                            }
-                        }
-                    }
-                },
-            }
-        }
+        tool: tool,
     };
 
+    // 扩展JQuery
     $.fn.extend({
 
         SQLCompiler: function (sql = "") {
@@ -1097,8 +1070,8 @@ return;
             testing(sql = "") {
 
                 let compiler = SQLCompiler.prototype.compile.steps;
-                SQLCompiler.prototype.tool.globalVariableContainer.sql = sql;
-                SQLCompiler.prototype.tool.globalVariableContainer.debug = true;
+                globalVariableContainer.sql = sql;
+                globalVariableContainer.debug = true;
 
                 // 词法分析
                 debugMsg("Lexical Analysis ...", debugColor.loading);
@@ -1142,17 +1115,17 @@ return;
 
                     getSQLCleared() {
 
-                        return SQLCompiler.prototype.tool.globalVariableContainer.sql_cleared;
+                        return globalVariableContainer.sql_cleared;
                     },
 
                     getSQLDemarcated() {
 
-                        return SQLCompiler.prototype.tool.globalVariableContainer.sql_lexicon_arr;
+                        return globalVariableContainer.sql_lexicon_arr;
                     },
 
                     getTokenTable() {
 
-                        return SQLCompiler.prototype.tool.globalVariableContainer.tokenTable;
+                        return globalVariableContainer.tokenTable;
                     },
                 },
 
@@ -1160,17 +1133,17 @@ return;
 
                     getStatementType() {
 
-                        return SQLCompiler.prototype.tool.globalVariableContainer.statement_type;
+                        return globalVariableContainer.statement_type;
                     },
 
                     getASTOutline() {
 
-                        return SQLCompiler.prototype.tool.globalVariableContainer.ast_outline;
+                        return globalVariableContainer.ast_outline;
                     },
 
                     getASTOutlinePruned() {
 
-                        return SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned;
+                        return globalVariableContainer.ast_outline_pruned;
                     },
                 }
             },
