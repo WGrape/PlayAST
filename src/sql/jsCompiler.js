@@ -350,7 +350,7 @@
             properties: ["type", "variant", "value", "index", "children", "subquery", "sub_query_level", "grouping"],
 
             // 支持的 type 属性值
-            propertyTypeAssignment: ["statement", "grouping", "clause", "subquery", "expression", "close"],
+            propertyTypeAssignment: ["statement", "clause", "predicate", "expression", "grouping", "subquery"],
 
             // 支持的 variant 属性值
             propertyVariantAssignment: [
@@ -361,7 +361,6 @@
                 "from",
                 "order",
                 "group",
-
                 "grouping", "clause", "subquery", "expression", "close"],
 
         },
@@ -380,6 +379,27 @@
 
                 // 兜底
                 expression: [],
+            },
+
+            // token 值与 Type的映射
+            tokenValueMapType: {
+
+                "select": "statement",
+                "update": "statement",
+                "delete": "statement",
+                "insert": "statement",
+
+                "order by": "clause",
+                "group by": "clause",
+                "having": "clause",
+                "from": "clause",
+                "where": "clause",
+                "limit": "clause",
+
+                "left join": "predicate",
+                "right join": "predicate",
+                "inner join": "predicate",
+                "full join": "predicate",
             },
 
             // token 值与 Variant的映射
@@ -574,11 +594,12 @@
         },
 
         // 修剪AST
-        pruning: {
+        pruningAST: {
 
-            start(root, sub_query_level) {
+            pruning(root, sub_query_level) {
 
                 this.diffing.diffingNodePropertyType(root, sub_query_level);
+                this.diffing.diffingNodePropertyToken(root, sub_query_level);
                 this.diffing.diffingNodePropertyVariant(root, sub_query_level);
 
                 this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
@@ -596,33 +617,35 @@
                 diffingNodePropertyType(root, sub_query_level) {
 
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+
+                    let tokenValueMapType = constContainer.tokenRelationAST.tokenValueMapType;
+
+                    for (let node of ast_outline) {
+
+                        // 会依次为 node 的 type 赋值: statement, clause, predicate . 如果都没有则赋兜底的值: expression
+                        node.type = (tokenValueMapType[node.value]) ? tokenValueMapType[node.value] : "expression";
+
+                        // 检查所有的 type 值是否都是受支持的
+                        if (constContainer.supportASTNode.propertyTypeAssignment.indexOf(node.type) < 0) {
+
+                            throw new Error("出现非法Type属性值(" + node.type + ")节点");
+                        }
+                    }
+                },
+
+                // diff节点的token属性
+                diffingNodePropertyToken(root, sub_query_level) {
+
+                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let token_table = tool.globalVariableContainer.tokenTable;
 
                     for (let node of ast_outline) {
 
-                        // 只要是 expression 统一加上 token 属性
-                        if (node && "expression" === node.type) {
+                        // 只要 type 是 expression 则统一加上 token 属性
+                        if ("expression" === node.type) {
 
                             // 预处理, 把expression类型的AST节点都加上token字段
                             node.token = token_table[node.index].type;
-                        }
-
-                        // 对 Clause 剪枝
-                        if (node && "clause" === node.type) {
-
-                            if (["order", "group"].indexOf(node.value) > -1) {
-
-                                node.variant = node.value + " by";
-                            }
-                        }
-
-                        // 对 Predicate 剪枝
-                        else if (node && "predicate" === node.type) {
-
-                            if (["left", "right", "inner"].indexOf(node.value) > -1) {
-
-                                node.variant = node.value + " join";
-                            }
                         }
                     }
                 },
@@ -639,20 +662,50 @@
                         let pre_node = ast_outline[i - 1];
                         let node = ast_outline[i];
 
-                        if (pre_node && node.variant) {
+                        // 根据当前节点的 Value 对当前节点Variant进行Diff。node.variant === node.value 表示当前节点的 variant 值还是当时创建的时候给的, 所以需要对它Diff
+                        node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
 
-                            node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
+                        // 根据当前节点的 Type 对当前节点Variant进行Diff
+                        switch (node.type) {
 
-                            if ("select" === pre_node.variant) {
+                            case "clause":
+                                if (["order", "group"].indexOf(node.value) > -1) {
+
+                                    node.variant = node.value + " by";
+                                }
+                                break;
+
+                            case "predicate":
+                                if (["left", "right", "inner"].indexOf(node.value) > -1) {
+
+                                    node.variant = node.value + " join";
+                                }
+                                break;
+
+                            default:
+                                break;
+                        }
+
+                        // 根据上一个节点的 Variant 对当前节点的Variant进行Diff
+                        switch (pre_node && pre_node.variant) {
+
+                            case "select":
 
                                 node.variant = (node.variant === node.value) ? "column" : node.variant;
-                            } else if ("from" === pre_node.variant) {
+                                break;
+
+                            case "from":
 
                                 node.variant = (node.variant === node.value) ? "table" : node.variant;
-                            } else if ("where" === pre_node.variant) {
+                                break;
+
+                            case "where":
 
                                 node.variant = (node.variant === node.value) ? "condition" : node.variant;
-                            }
+                                break;
+
+                            default:
+                                break;
                         }
                     }
                 },
@@ -667,7 +720,7 @@
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let length = ast_outline.length;
 
-                    for (let i = 0; i <= length - 1;++i) {
+                    for (let i = 0; i <= length - 1; ++i) {
 
                         let node = ast_outline[i];
 
@@ -962,30 +1015,10 @@
                         let token_table = globalVariableContainer.tokenTable;
                         let root = this.generateASTNode({children: []});
 
-                        let tokenReferASTNodeType = constContainer.tokenRelationAST.tokenReferASTNodeType;
-
                         for (let token_obj of token_table) {
 
-                            let token = token_obj.type.toLocaleLowerCase();
-
-                            let node = null, node_type = null;
-
-                            if (token_obj.index === 0 && token === "keyword" && tokenReferASTNodeType.statement.indexOf(token_obj.value) > -1) {
-
-                                node_type = "statement";
-                            } else if (token === "keyword" && tokenReferASTNodeType.predicate.indexOf(token_table[token_obj.index - 1].value) < 0 && tokenReferASTNodeType.predicate.indexOf(token_obj.value) > -1) {
-
-                                node_type = "predicate";
-                            } else if (token === "keyword" && tokenReferASTNodeType.clause.indexOf(token_obj.value) > -1) {
-
-                                node_type = "clause";
-                            } else {
-
-                                node_type = "expression";
-                            }
-
-                            node = this.generateASTNode({
-                                type: node_type,
+                            let node = this.generateASTNode({
+                                type: token_obj.value,
                                 variant: token_obj.value,
                                 value: token_obj.value,
                                 index: token_obj.index
@@ -1005,10 +1038,10 @@
                         let sub_query_num = tool.getSubQueryNum();
                         let root = JSON.parse(JSON.stringify(globalVariableContainer.ast_outline)); // let root = Object.assign({}, globalVariableContainer.ast_outline); 引用传递, 故使用 JSON.parse 来禁止引用传递
 
-                        // 开始修剪
+                        // 开始修剪(按层级)
                         for (let i = 1; i <= sub_query_num; ++i) {
 
-                            root = tool.pruning.start(root, i);
+                            root = tool.pruningAST.pruning(root, i);
                         }
 
                         globalVariableContainer.ast_outline_pruned = root;
