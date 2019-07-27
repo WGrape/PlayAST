@@ -347,7 +347,7 @@
         supportASTNode: {
 
             // 支持的所有节点属性
-            properties: ["type", "variant", "value", "index", "children", "subquery", "sub_query_level", "grouping"],
+            properties: ["type", "variant", "value", "index", "children", "subquery", "sub_query_level", "grouping", "matched_bracket_index"],
 
             // 支持的 type 属性值
             propertyTypeAssignment: ["statement", "clause", "predicate", "expression", "grouping", "subquery"],
@@ -414,6 +414,8 @@
                 "<": "operator",
                 "=": "operator",
                 ";": "close",
+                "(": "left_bracket",
+                ")": "right_bracket"
             }
         },
 
@@ -507,24 +509,47 @@
             return arr;
         },
 
+        // 获取第N个左括号的下标
+        getLastNthLeftBracketASTIndex(n) {
+
+            let ast_outline = globalVariableContainer.ast_outline.children;
+            let length = ast_outline.length;
+            let times = 0;
+
+            for (let i = 0; i <= length - 1; ++i) {
+
+                if ("(" === ast_outline[i].value) {
+
+                    ++times;
+
+                    if (times === n) {
+
+                        return i;
+                    }
+                }
+            }
+
+            throw new Error("Not match left bracket");
+        },
+
         // 获取最后第N个右括号的下标
         getLastNthRightBracketASTIndex(n) {
 
             let ast_outline = globalVariableContainer.ast_outline.children;
             let length = ast_outline.length;
 
-            let times = 1;
+            let times = 0;
 
             for (let i = length - 1; i >= 0; --i) {
 
                 if (")" === ast_outline[i].value) {
 
+                    ++times;
+
                     if (times === n) {
 
                         return i;
                     }
-
-                    ++times;
                 }
             }
 
@@ -656,35 +681,78 @@
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let length = ast_outline.length;
 
+                    let right_bracket_num = 0;
                     let tokenValueMapVariant = constContainer.tokenRelationAST.tokenValueMapVariant;
                     for (let i = 0; i <= length - 1; ++i) {
 
                         let pre_node = ast_outline[i - 1];
+                        let pre_pre_node = ast_outline[i - 2];
                         let node = ast_outline[i];
+                        let next_node = ast_outline[i + 1];
+
+                        // 如果当前值是括号, 则添加 matched_bracket_index 属性
+                        if (")" === node.value) {
+
+                            ++right_bracket_num;
+                            node.matched_bracket_index = tool.getLastNthLeftBracketASTIndex(right_bracket_num);
+                        }
 
                         // 根据当前节点的 Value 对当前节点Variant进行Diff。node.variant === node.value 表示当前节点的 variant 值还是当时创建的时候给的, 所以需要对它Diff
                         node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
 
                         // 根据上一个节点的 Variant 对当前节点的Variant进行Diff
-                        switch (pre_node && pre_node.variant) {
+                        if (!pre_node) {
+                            continue;
+                        }
+                        if (pre_node.variant.indexOf("join") > -1) {
 
-                            case "select":
+                            node.variant = "table";
+                        } else {
+                            switch (pre_node.variant) {
 
-                                node.variant = (node.variant === node.value) ? "column" : node.variant;
-                                break;
+                                case "select":
+                                    node.variant = (node.variant === node.value) ? "column" : node.variant;
+                                    break;
 
-                            case "from":
+                                case "recursive":
+                                case "alias":
+                                    pre_pre_node && (node.variant = pre_pre_node.variant);
+                                    break;
 
-                                node.variant = (node.variant === node.value) ? "table" : node.variant;
-                                break;
+                                case "from":
 
-                            case "where":
+                                    node.variant = (node.variant === node.value) ? "table" : node.variant;
+                                    break;
 
-                                node.variant = (node.variant === node.value) ? "condition" : node.variant;
-                                break;
+                                case "on":
+                                    if ("object operator" === next_node.variant) {
 
-                            default:
-                                break;
+                                        node.variant = "database";
+                                    }
+                                    break;
+
+                                case "=":
+                                    if ("object operator" === next_node.variant) {
+
+                                        node.variant = "database";
+                                    }
+                                    break;
+
+                                case "object operator":
+                                    if ("database" === pre_pre_node.variant) {
+
+                                        node.variant = "table";
+                                    }
+                                    break;
+
+                                case "where":
+
+                                    node.variant = (node.variant === node.value) ? "condition" : node.variant;
+                                    break;
+
+                                default:
+                                    break;
+                            }
                         }
                     }
                 },
@@ -748,7 +816,12 @@
                             // 把所有连续的 expression 都打入 node_subquery 中
                             for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
 
-                                node_subquery.subquery.push(ast_outline[j]);
+                                // TODO:处理还有问题,可能是因为删除元素导致matched_bracket_index无法匹配
+                                if (i !== ast_outline[j].matched_bracket_index) {
+
+                                    node_subquery.subquery.push(ast_outline[j]);
+                                }
+
                                 delete ast_outline[j];
                             }
                             ast_outline[i] = node_subquery;
