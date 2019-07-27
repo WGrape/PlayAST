@@ -4,11 +4,36 @@
  */
 (function () {
 
-    let node
-
-    let SQLCompiler = function (sql) {
+    let SQLCompiler = function (sql = "") {
 
         SQLCompiler.prototype.tool.globalVariableContainer.sql = sql;
+    }, debugMsg = function (msg = "", color = "color:black", level = 0) {
+
+        let globalVariableContainer = SQLCompiler.prototype.tool.globalVariableContainer;
+
+        if (!globalVariableContainer.debug) {
+            return;
+        }
+
+        if (Array.isArray(msg)) {
+
+            console.log(msg);
+            return;
+        }
+
+        if ("color:black" === color) {
+
+            console.log(msg);
+        } else {
+
+            console.log("%c" + globalVariableContainer.debug_id + ": " + msg, color);
+            ++globalVariableContainer.debug_id;
+        }
+
+    }, debugColor = {
+        info: "color:#03A9F4",
+        loading: "color:#FF9800",
+        success: "color:green"
     };
 
     SQLCompiler.prototype = {
@@ -32,8 +57,7 @@
                 } catch (e) {
 
                     // 解析失败
-                    throw e;
-                    alert("解析失败 : " + e.message);
+                    throw e; // alert("解析失败 : " + e.message);
                 }
 
                 // OK ! Sql passed the check !
@@ -65,12 +89,14 @@
 
                     clear() {
 
+                        // 对SQL进行trim处理, 如果没有分号, 则添加
                         let sql = SQLCompiler.prototype.tool.globalVariableContainer.sql.toLowerCase().trim();
                         if (";" !== sql[sql.length - 1]) {
 
                             sql += ";";
                         }
 
+                        // 对SQL中的目标字符两侧添加空白符
                         let breakpoint_obj = SQLCompiler.prototype.tool.constContainer.referenceTable.symbolTable;
                         delete breakpoint_obj['*']; // delete breakpoint_arr['.'];
                         delete breakpoint_obj['"'];
@@ -161,7 +187,7 @@
                         // 如果语法错误则会生成一棵带有错误信息的AST, 并结束整个编译
 
                         // 先决策是哪种Statement
-                        this.decisionStatement();
+                        this.decideStatement();
 
                         // 生成 AST Outline (创建出 AST 的轮廓)
                         this.createASTOutline();
@@ -181,7 +207,7 @@
                         return true;
                     },
 
-                    decisionStatement() {
+                    decideStatement() {
 
                         // 根据token表中的第一个数据判断即可
                         let token_table = SQLCompiler.prototype.tool.globalVariableContainer.tokenTable;
@@ -254,39 +280,30 @@
                         let sub_query_num = SQLCompiler.prototype.tool.getSubQueryNum();
                         for (let i = 1; i <= sub_query_num; ++i) {
 
-                            // 对 Type 值剪枝
-                            pruning.pruningType(root, i);
-
-                            // 对 Variant 值剪枝
-                            pruning.pruningVariant(root, i);
-
-                            // 对 子查询 剪枝
-                            pruning.pruningSubQuery(root, i);
-                            root = pruning.pruningEmptyNode(root);
-
-                            // 对 Clause 剪枝
-                            pruning.pruningClause(root, i);
-
-                            // 对 Predicate 剪枝
-                            pruning.pruningPredicate(root, i);
-
-                            // 对 Expression 剪枝
-                            pruning.pruningExpression(root, i);
-                            root = pruning.pruningEmptyNode(root);
+                            SQLCompiler.prototype.tool.diffing.start(root, i);
+                            root = pruning.start(root, i);
                         }
-
-                        // 对 空节点 剪枝
-                        root = pruning.pruningEmptyNode(root);
 
                         SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned = root;
                     },
 
                     makeASTOutlineDiffing() {
+return;
+                        let root = JSON.parse(JSON.stringify(SQLCompiler.prototype.tool.globalVariableContainer.ast_outline));
+                        let diffing = SQLCompiler.prototype.tool.diffing;
+                        let sub_query_num = SQLCompiler.prototype.tool.getSubQueryNum();
 
-                        // 内部会根据语法模型进行 diff
+                        // 选择当前的语法模型
                         let statement_type = SQLCompiler.prototype.tool.globalVariableContainer.statement_type;
-                        let syntacticModel = SQLCompiler.prototype.tool.constContainer.syntacticModel[statement_type];
+                        SQLCompiler.prototype.tool.globalVariableContainer.syntactic_model = SQLCompiler.prototype.tool.constContainer.syntacticModel[statement_type];
 
+                        // 根据语法模型进行diff
+                        for (let i = 1; i <= sub_query_num; ++i) {
+
+                            diffing.start(root, i);
+                        }
+
+                        SQLCompiler.prototype.tool.globalVariableContainer.ast_outline_pruned = root;
                     },
 
 
@@ -726,11 +743,18 @@
             globalVariableContainer: {
 
                 /**
+                 * Debug
+                 */
+                debug: false,
+                debug_id: 1,
+
+                /**
                  * SQL解析情况
                  */
                 sql: "",
                 sql_error: false,
                 sql_error_msg: "",
+                syntactic_model: {}, // 当前的语法模型
 
                 /**
                  * lexicalAnalysis 词法分析阶段的产物
@@ -884,147 +908,151 @@
                 return ast_outline;
             },
 
-            // 修剪函数
+            // 修剪AST
             pruning: {
 
-                pruningEmptyNode(root) {
+                start(root, sub_query_level) {
 
-                    let root_str = JSON.stringify(root);
-                    root = JSON.parse(root_str.replace(/,null/g, ""));
-                    return root;
+                    this.collapsing.collapsingGroupingTypeNode(root, sub_query_level);
+                    root = this.collapsing.rebuildASTIndex(root);
+
+                    this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
+                    return this.collapsing.rebuildASTIndex(root);
                 },
 
-                pruningSubQuery(root, sub_query_level) {
+                // 折叠函数
+                collapsing: {
 
-                    let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                    // 折叠出 Subquery 节点
+                    collapsingGroupingTypeNode(root, sub_query_level) {
 
-                    let length = ast_outline.length;
+                        let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                        let length = ast_outline.length;
 
-                    let left_bracket_num = 0;
+                        for (let i = 0; i <= length - 1;) {
 
-                    let start, end;
+                            let node = ast_outline[i];
 
-                    // 上面delete后数组长度不变, 被删除的元素会变成undefined
-                    for (let i = 0; i <= length - 1 && ast_outline[i] && ast_outline[i].value; ++i) {
+                            if (node && "close" !== node.variant && "expression" === node.type && "Keyword" !== node.token) {
 
-                        if ("(" === ast_outline[i].value) {
+                                let node_grouping = {type: "grouping", grouping: []};
 
-                            ++left_bracket_num;
-                        }
+                                // 把所有连续的 expression 都打入 node_grouping 中
+                                let j = i;
+                                while (j <= length - 1 && "expression" === ast_outline[j].type) {
 
-                        // 如果出现子查询, 则全部都加到query中
-                        if ("(" === ast_outline[i].value && i - 1 >= 0 && ast_outline[i - 1].value === "from") {
+                                    node_grouping.grouping.push(ast_outline[j]);
+                                    delete ast_outline[j];
+                                    ++j;
+                                }
 
-                            start = i;
-                            end = SQLCompiler.prototype.tool.getLastNthRightBracketASTIndex(left_bracket_num);
-                            let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
+                                // 从 i 至 j-1 都是连续的expression
+                                node = node_grouping;
 
-                            // 把所有连续的 expression 都打入 node_subquery 中
-                            for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
+                                i = j;
+                                if (i === j) {
 
-                                node_subquery.subquery.push(ast_outline[j]);
-                                delete ast_outline[j];
+                                    ++i;
+                                }
+                                continue;
                             }
-                            ast_outline[i] = node_subquery;
 
-                            break;
+                            ++i;
                         }
-                    }
-                },
+                    },
 
-                pruningClause(root, sub_query_level) {
+                    // 折叠出 Grouping 类型的节点
+                    collapsingSubqueryTypeNode(root, sub_query_level) {
 
-                    let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                        // 整理出来 Subquery, Grouping 之类的
+                        let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                        let length = ast_outline.length, left_bracket_num = 0, start, end;
 
-                    for (let node of ast_outline) {
+                        for (let i = 0; i <= length - 1 && ast_outline[i] && ast_outline[i].value; ++i) {
 
-                        if (node && "clause" === node.type) {
+                            if ("(" === ast_outline[i].value) {
 
-                            if ("order" === node.value) {
+                                ++left_bracket_num;
+                            }
 
-                                node.variant = "order by";
-                            } else if ("group" === node.value) {
+                            // 如果出现子查询, 则全部都加到query中
+                            if ("(" === ast_outline[i].value && i - 1 >= 0 && ast_outline[i - 1].value === "from") {
 
-                                node.variant = "group by";
+                                start = i;
+                                end = SQLCompiler.prototype.tool.getLastNthRightBracketASTIndex(left_bracket_num);
+                                let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
+
+                                // 把所有连续的 expression 都打入 node_subquery 中
+                                for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
+
+                                    node_subquery.subquery.push(ast_outline[j]);
+                                    delete ast_outline[j];
+                                }
+                                ast_outline[i] = node_subquery;
+
+                                break;
                             }
                         }
-                    }
+                    },
+
+                    // 因为折叠会出现索引连续不上和length不变的情况, 故而需要清理掉zombie数据
+                    rebuildASTIndex(root) {
+
+                        let root_str = JSON.stringify(root);
+                        return JSON.parse(root_str.replace(/,null/g, ""));
+                    },
+                }
+            },
+
+            // diffAST
+            diffing: {
+
+                start(root, sub_query_level) {
+
+                    this.diffingNodePropertyType(root, sub_query_level);
+                    this.diffingNodePropertyVariant(root, sub_query_level);
                 },
 
-                pruningPredicate(root, sub_query_level) {
-
-                    let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
-
-                    for (let node of ast_outline) {
-
-                        if (node && "predicate" === node.type) {
-
-                            if ("left" === node.value) {
-
-                                node.variant = "left join";
-                            } else if ("right" === node.value) {
-
-                                node.variant = "right join";
-                            }
-                        }
-                    }
-                },
-
-                pruningExpression(root, sub_query_level) {
+                // diff节点的Type属性
+                diffingNodePropertyType(root, sub_query_level) {
 
                     let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let token_table = SQLCompiler.prototype.tool.globalVariableContainer.tokenTable;
-                    let length = ast_outline.length;
 
-                    // 预处理, 把expression类型的AST节点都加上token字段
-                    for (let i = 0; i <= length - 1; ++i) {
+                    for (let node of ast_outline) {
 
-                        if (ast_outline[i] && "expression" === ast_outline[i].type) {
-                            ast_outline[i].token = token_table[ast_outline[i].index].type;
-                        }
-                    }
+                        // 对 Expression 剪枝
+                        if (node && "expression" === node.type) {
 
-                    // 依次处理每个 expression 节点
-                    for (let i = 0; i <= length - 1;) {
-
-                        if (ast_outline[i] && "close" === ast_outline[i].variant) {
-
-                            break;
+                            // 预处理, 把expression类型的AST节点都加上token字段
+                            node.token = token_table[node.index].type;
                         }
 
-                        if (ast_outline[i] && "expression" === ast_outline[i].type && "Keyword" !== ast_outline[i].token) {
+                        // 对 Clause 剪枝
+                        else if (node && "clause" === node.type) {
 
-                            let node_grouping = {type: "grouping", grouping: []};
+                            if (["order", "group"].indexOf(node.value) > -1) {
 
-                            // 把所有连续的 expression 都打入 node_grouping 中
-                            let j = i;
-                            while (j <= length - 1 && "expression" === ast_outline[j].type) {
-
-                                node_grouping.grouping.push(ast_outline[j]);
-                                delete ast_outline[j];
-                                ++j;
+                                node.variant = node.value + " by";
                             }
-
-                            // 从 i 至 j-1 都是连续的expression
-                            ast_outline[i] = node_grouping;
-
-                            i = j;
-                            if (i === j) {
-
-                                ++i;
-                            }
-                            continue;
                         }
 
-                        ++i;
+                        // 对 Predicate 剪枝
+                        else if (node && "predicate" === node.type) {
+
+                            if (["left", "right", "inner"].indexOf(node.value) > -1) {
+
+                                node.variant = node.value + " by";
+                            }
+                        }
                     }
                 },
 
-                pruningVariant(root, sub_query_level) {
+                // diff节点的Variant属性
+                diffingNodePropertyVariant(root, sub_query_level) {
 
                     let ast_outline = SQLCompiler.prototype.tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let length = ast_outline.length;
-
 
                     let tokenValueMapVariant = SQLCompiler.prototype.tool.constContainer.tokenRelationAST.tokenValueMapVariant;
                     for (let i = 0; i <= length - 1; ++i) {
@@ -1049,12 +1077,6 @@
                         }
                     }
                 },
-
-                pruningType(root, sub_query_level) {
-
-
-                },
-
             }
         }
     };
@@ -1071,6 +1093,49 @@
 
         SQLCompilerDebug: {
 
+            // 自动化测试
+            testing(sql = "") {
+
+                let compiler = SQLCompiler.prototype.compile.steps;
+                SQLCompiler.prototype.tool.globalVariableContainer.sql = sql;
+                SQLCompiler.prototype.tool.globalVariableContainer.debug = true;
+
+                // 词法分析
+                debugMsg("Lexical Analysis ...", debugColor.loading);
+                debugMsg("Clear SQL ... Results are as follows", debugColor.info);
+                compiler.lexicalAnalysis.clear();
+                debugMsg(this.steps.lexicalAnalysis.getSQLCleared());
+
+                debugMsg("Demarcate SQL ... Results are as follows", debugColor.info);
+                compiler.lexicalAnalysis.demarcate();
+                debugMsg(this.steps.lexicalAnalysis.getSQLDemarcated());
+
+                debugMsg("Create Token Table ... Results are as follows", debugColor.info);
+                compiler.lexicalAnalysis.createTokenTable();
+                debugMsg(this.steps.lexicalAnalysis.getTokenTable());
+
+                debugMsg("End Lexical Analysis\n\n", debugColor.success);
+
+                // 语法分析
+                debugMsg("Syntactic Analysis ...", debugColor.loading);
+                debugMsg("Decide Statement ... Results are as follows", debugColor.info);
+                compiler.syntacticAnalysis.decideStatement();
+                debugMsg(this.steps.syntacticAnalysis.getStatementType());
+
+                debugMsg("Create AST Outline ... Results are as follows", debugColor.info);
+                compiler.syntacticAnalysis.createASTOutline();
+                debugMsg(this.steps.syntacticAnalysis.getASTOutline());
+
+                debugMsg("Pruning AST Outline ... Results are as follows", debugColor.info);
+                compiler.syntacticAnalysis.makeASTOutlinePruning();
+                debugMsg(this.steps.syntacticAnalysis.getASTOutlinePruned());
+
+
+                debugMsg("End Syntactic Analysis\n\n", debugColor.success);
+
+            },
+
+            // 单步, 获取每步的执行情况
             steps: {
 
                 lexicalAnalysis: {
@@ -1080,7 +1145,7 @@
                         return SQLCompiler.prototype.tool.globalVariableContainer.sql_cleared;
                     },
 
-                    getSQLLexiconArr() {
+                    getSQLDemarcated() {
 
                         return SQLCompiler.prototype.tool.globalVariableContainer.sql_lexicon_arr;
                     },
@@ -1109,8 +1174,7 @@
                     },
                 }
             },
-        }
-
+        },
     });
 
 })();

@@ -1,0 +1,70 @@
+
+
+<!--https://www.jianshu.com/p/e7f32464a8ab-->
+
+<html>
+<button id="button" tag="login">点击打开登录浮层</button>
+<script>
+    Function.prototype.after = function (after_fn) {
+
+        let _self = this; // this(); 不能直接触发函数, 故而保存下this
+
+        return function () {
+
+            // 这里使用到的 arguments 是这个回调函数中的参数列表
+
+            _self.apply(_self, arguments); // 等于 _self();
+
+            after_fn.apply(this, arguments);
+        }
+    };
+
+    let showLogin = function () {
+        console.log("打开登录浮层");
+    };
+
+    let log = function () {
+        console.log("上传标签为:" + this.getAttribute('tag'));
+    };
+
+    // 为 showLogin 函数加上后续执行函数, showLogin执行结束后就会执行 log 函数
+    showLogin = showLogin.after(log);
+
+
+    document.getElementById('button').onclick = showLogin;
+
+
+    // 理解
+
+    /**
+     * 1. 为点击添加回调事件 : showLogin
+     */
+     document.getElementById('button').onclick = showLogin.after(log);
+
+    /**
+     * 2. showLogin 执行结束后, 执行后续处理
+     */
+    function after(log) {
+
+        // this 指代 showLogin
+        let _self = this;
+
+        return function () {
+
+            // 让 showLogin 函数执行, 因为show
+            _self.apply(this, arguments);
+
+            // 让 log 回调函数去执行, 因为 log 函数内部可能会使用了 this, 因此需要把正确的 this 传给它
+            log.apply(this, arguments);
+        }
+    }
+
+    /**
+     * 3. 整体的理解就是, 因为是事件回调不能直接触发, 所以为 document.getElementById('button').onclick 赋值了一个回调函数,
+     * 当手动触发了点击事件后, 事件的回调函数被执行,
+     */
+
+
+
+</script>
+</html>
