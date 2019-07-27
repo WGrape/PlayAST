@@ -665,27 +665,6 @@
                         // 根据当前节点的 Value 对当前节点Variant进行Diff。node.variant === node.value 表示当前节点的 variant 值还是当时创建的时候给的, 所以需要对它Diff
                         node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
 
-                        // 根据当前节点的 Type 对当前节点Variant进行Diff
-                        switch (node.type) {
-
-                            case "clause":
-                                if (["order", "group"].indexOf(node.value) > -1) {
-
-                                    node.variant = node.value + " by";
-                                }
-                                break;
-
-                            case "predicate":
-                                if (["left", "right", "inner"].indexOf(node.value) > -1) {
-
-                                    node.variant = node.value + " join";
-                                }
-                                break;
-
-                            default:
-                                break;
-                        }
-
                         // 根据上一个节点的 Variant 对当前节点的Variant进行Diff
                         switch (pre_node && pre_node.variant) {
 
@@ -899,17 +878,36 @@
                         globalVariableContainer.sql_lexicon_arr = tool.trimArray(sql.split(" "));
                     },
 
+                    // 创建 token 表, 会合并部分目标单元
                     createTokenTable() {
 
                         let token_arr = [];
                         let lexicon_arr = globalVariableContainer.sql_lexicon_arr;
+                        let length = lexicon_arr.length;
 
-                        let index = 0;
-                        for (let lexicon of lexicon_arr) {
+                        for (let i = 0; i <= length - 1;) {
 
+                            // 生成node, 并添加 index 属性
+                            let lexicon = lexicon_arr[i];
                             let node = this.generateTokenNode(lexicon);
-                            node.index = index++;
+
+                            // 把 node 结点扔到 lexicon_arr
                             token_arr.push(node);
+                            node.index = token_arr.length - 1;
+
+                            // 如果当前词是以下, 则需要合并
+                            if (["left", "right", "inner", "full"].indexOf(lexicon) > -1) {
+
+                                node.value = lexicon + " join";
+                                i += 2;
+                            } else if (["group", "order"].indexOf(lexicon) > -1) {
+
+                                node.value = lexicon + " by";
+                                i += 2;
+                            } else {
+
+                                ++i;
+                            }
                         }
 
                         // token 表创建成功
