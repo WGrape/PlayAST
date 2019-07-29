@@ -509,14 +509,14 @@
             return arr;
         },
 
-        // 获取第N个左括号的下标
+        // 获取第N个左括号的下标(从右向左)
         getLastNthLeftBracketASTIndex(n) {
 
             let ast_outline = globalVariableContainer.ast_outline.children;
             let length = ast_outline.length;
             let times = 0;
 
-            for (let i = 0; i <= length - 1; ++i) {
+            for (let i = length - 1; i >= 0; --i) {
 
                 if ("(" === ast_outline[i].value) {
 
@@ -532,7 +532,7 @@
             throw new Error("Not match left bracket");
         },
 
-        // 获取最后第N个右括号的下标
+        // 获取最后第N个右括号的下标(从右向左)
         getLastNthRightBracketASTIndex(n) {
 
             let ast_outline = globalVariableContainer.ast_outline.children;
@@ -807,7 +807,7 @@
                         }
 
                         // 如果出现子查询, 则全部都加到query中
-                        if ("(" === ast_outline[i].value && i - 1 >= 0 && ast_outline[i - 1].value === "from") {
+                        if ("(" === ast_outline[i].value && ast_outline[i - 1] && ast_outline[i - 1].value === "from") {
 
                             start = i;
                             end = tool.getLastNthRightBracketASTIndex(left_bracket_num);
@@ -816,8 +816,7 @@
                             // 把所有连续的 expression 都打入 node_subquery 中
                             for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
 
-                                // TODO:处理还有问题,可能是因为删除元素导致matched_bracket_index无法匹配
-                                if (i !== ast_outline[j].matched_bracket_index) {
+                                if (ast_outline[i].index !== ast_outline[j].matched_bracket_index) {
 
                                     node_subquery.subquery.push(ast_outline[j]);
                                 }
