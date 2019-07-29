@@ -408,7 +408,7 @@
                 "as": "alias",
                 ",": "recursive",
                 "and": "recursive",
-                "&&":"recursive",
+                "&&": "recursive",
                 "*": "all columns",
                 ".": "object operator",
                 // "on": "",
@@ -630,19 +630,15 @@
                 this.diffing.diffingNodePropertyToken(root, sub_query_level);
                 this.diffing.diffingNodePropertyVariant(root, sub_query_level);
 
-                // 然后 sensing
-                this.sensing.sensingColumnList(root, sub_query_level);
-                this.sensing.sensingExprList(root, sub_query_level);
-                this.sensing.sensingBracketList(root, sub_query_level);
-                this.sensing.sensingValueList(root, sub_query_level);
-                this.sensing.sensingTableList(root, sub_query_level);
-
-                // 最后 collapsing
+                // 然后 collapsing
                 this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
                 root = this.collapsing.rebuildASTIndex(root);
 
                 this.collapsing.collapsingGroupingTypeNode(root, sub_query_level);
                 root = this.collapsing.rebuildASTIndex(root);
+
+                // 最后 sensing grouping 即可
+                this.sensing.sensingGrouping(root);
 
                 return root;
             },
@@ -773,33 +769,50 @@
             // sensing函数(make sense)
             sensing: {
 
-                // 理通column列表
-                sensingColumnList(root, sub_query_level) {
+                sensingGrouping(root) {
+
+                    // 理通column列表
+                    this.understandColumnList(root);
+
+                    // 理通数据表列表
+                    this.understandTableList(root);
+
+                    // 理通表达式列表
+                    this.understandExprList(root);
+
+                    // 理通括号列表
+                    this.understandValueList(root);
+
+                    // 理通值列表
+                    this.understandValueList(root);
+                },
+
+                understandColumnList(root) {
 
                     // db.table.column, db.table.column, ...
+                    for (let node of root) {
+
+                        console.log(node);
+                    }
 
                 },
 
-                // 理通表达式列表
-                sensingExprList(root, sub_query_level) {
+                understandExprList(root) {
 
                     // 第1种(只能有等号, 用于Update语句, 必须有逗号作为recursive) : name = "", age=12, ...
                     // 第2种(支持任何运算符, 用于检索, 必须有And作为) : name = ""
                 },
 
-                // 理通括号列表
-                sensingBracketList(root, sub_query_level){
+                understandBracketList(root) {
 
                     // 匹配括号, 判断括号匹配是否正确
                 },
 
-                // 理通值列表
-                sensingValueList(root, sub_query_level){
+                understandValueList(root) {
 
                 },
 
-                // 理通数据表列表
-                sensingTableList(root, sub_query_level){
+                understandTableList(root) {
 
                     // db.table, db.table, ...
                 },
