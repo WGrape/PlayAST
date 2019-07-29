@@ -407,6 +407,8 @@
 
                 "as": "alias",
                 ",": "recursive",
+                "and": "recursive",
+                "&&":"recursive",
                 "*": "all columns",
                 ".": "object operator",
                 // "on": "",
@@ -623,10 +625,19 @@
 
             pruning(root, sub_query_level) {
 
+                // 先  diffing
                 this.diffing.diffingNodePropertyType(root, sub_query_level);
                 this.diffing.diffingNodePropertyToken(root, sub_query_level);
                 this.diffing.diffingNodePropertyVariant(root, sub_query_level);
 
+                // 然后 sensing
+                this.sensing.sensingColumnList(root, sub_query_level);
+                this.sensing.sensingExprList(root, sub_query_level);
+                this.sensing.sensingBracketList(root, sub_query_level);
+                this.sensing.sensingValueList(root, sub_query_level);
+                this.sensing.sensingTableList(root, sub_query_level);
+
+                // 最后 collapsing
                 this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
                 root = this.collapsing.rebuildASTIndex(root);
 
@@ -636,6 +647,7 @@
                 return root;
             },
 
+            // diffing函数
             diffing: {
 
                 // diff节点的Type属性
@@ -756,6 +768,42 @@
                         }
                     }
                 },
+            },
+
+            // sensing函数(make sense)
+            sensing: {
+
+                // 理通column列表
+                sensingColumnList(root, sub_query_level) {
+
+                    // db.table.column, db.table.column, ...
+
+                },
+
+                // 理通表达式列表
+                sensingExprList(root, sub_query_level) {
+
+                    // 第1种(只能有等号, 用于Update语句, 必须有逗号作为recursive) : name = "", age=12, ...
+                    // 第2种(支持任何运算符, 用于检索, 必须有And作为) : name = ""
+                },
+
+                // 理通括号列表
+                sensingBracketList(root, sub_query_level){
+
+                    // 匹配括号, 判断括号匹配是否正确
+                },
+
+                // 理通值列表
+                sensingValueList(root, sub_query_level){
+
+                },
+
+                // 理通数据表列表
+                sensingTableList(root, sub_query_level){
+
+                    // db.table, db.table, ...
+                },
+
             },
 
             // 折叠函数
