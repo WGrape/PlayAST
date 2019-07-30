@@ -825,12 +825,12 @@
 
                 understandOrderByExprList(first) {
 
-                    console.log("-----------");
-                    console.log(first);
+                    tool.pruningAST.sensing.understandColumnList(first);
                 },
 
                 understandGroupByExprList(first) {
 
+                    tool.pruningAST.sensing.understandColumnList(first);
                 },
 
                 understandValueList(first) {
@@ -842,8 +842,6 @@
                     let length = tables.length;
                     for (let i = 0; i <= length - 1; ++i) {
 
-                        let pre_pre_pre_table = tables[i - 3];
-                        let pre_pre_table = tables[i - 2];
                         let pre_table = tables[i - 1];
                         let table = tables[i];
 
