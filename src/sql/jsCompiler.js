@@ -347,7 +347,7 @@
         supportASTNode: {
 
             // 支持的所有节点属性
-            properties: ["type", "variant", "value", "index", "children", "subquery", "sub_query_level", "grouping", "matched_bracket_index"],
+            properties: ["type", "variant", "value", "index", "children", "subquery", "sub_query_level", "grouping", "for", "matched_bracket_index"],
 
             // 支持的 type 属性值
             propertyTypeAssignment: ["statement", "clause", "predicate", "expression", "grouping", "subquery"],
@@ -417,7 +417,13 @@
                 "=": "operator",
                 ";": "close",
                 "(": "left_bracket",
-                ")": "right_bracket"
+                ")": "right_bracket",
+
+                "desc" : "sort",
+                "asc": "sort",
+
+                // 写下支持的函数列表
+                "concat": "function"
             }
         },
 
@@ -646,6 +652,9 @@
                 this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
                 root = this.collapsing.rebuildASTIndex(root);
 
+                this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
+                root = this.collapsing.rebuildASTIndex(root);
+
                 this.collapsing.collapsingGroupingTypeNode(root, sub_query_level);
                 root = this.collapsing.rebuildASTIndex(root);
 
@@ -704,22 +713,10 @@
                     let tokenValueMapVariant = constContainer.tokenRelationAST.tokenValueMapVariant;
                     for (let i = 0; i <= length - 1; ++i) {
 
-                        let pre_node = ast_outline[i - 1];
-                        let pre_pre_node = ast_outline[i - 2];
                         let node = ast_outline[i];
-                        let next_node = ast_outline[i + 1];
 
                         // 根据当前节点的 Value 对当前节点Variant进行Diff。node.variant === node.value 表示当前节点的 variant 值还是当时创建的时候给的, 所以需要对它Diff
                         node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
-
-                        // 根据上一个节点的 Variant 对当前节点的Variant进行Diff
-                        if (!pre_node) {
-                            continue;
-                        }
-                        if (pre_node.variant.indexOf("join") > -1) {
-
-                            node.variant = "table";
-                        }
                     }
                 },
 
@@ -748,6 +745,26 @@
 
                 sensingGrouping(root, sub_query_level) {
 
+                    let map = {
+
+                        "select": this.understandColumnList,
+                        "from": this.understandTableList,
+
+                        "values": this.understandValueList,
+
+                        "join": this.understandJoinExprList,
+                        "left join": this.understandJoinExprList,
+                        "right join": this.understandJoinExprList,
+                        "full join": this.understandJoinExprList,
+                        "inner join": this.understandJoinExprList,
+
+                        "where": this.understandWhereExprList,
+                        "group by": this.understandGroupByExprList,
+                        "order by": this.understandOrderByExprList,
+
+                        "limit": this.understandLimitExprList,
+
+                    };
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let length = ast_outline.length;
 
@@ -759,79 +776,97 @@
                         }
 
                         let node = ast_outline[i];
-                        let pre_node = ast_outline[i - 1];
-                        let next_node = ast_outline[i + 1];
-
-                        if (pre_node && "select" === pre_node.variant) {
-
-                            // 理通column列表
-                            this.understandColumnList(node.grouping);
-                        } else if (pre_node && "from" === pre_node.variant) {
-
-                            // 理通数据表列表
-                            this.understandTableList(node.grouping);
-                        } else if (pre_node && "where" === pre_node.variant) {
-
-                            // 理通运算表达式列表
-                            this.understandExprList(node.grouping);
-                        } else if (pre_node && "set" === pre_node.variant) {
-
-                            // 理通运算表达式列表
-                            this.understandExprList(node.grouping);
-                        } else if (pre_node && "values" === pre_node.variant) {
-
-                            // 理通值列表
-                            this.understandValueList(node.grouping);
-                        }
-
+                        map[node['for']] && map[node['for']](node['grouping']);
                     }
                 },
 
                 understandColumnList(columns) {
 
-                    // [db.][table.]column, [db.][table.]column, ...
-                    // 根据variant去判断, 所以diffingNodePropertyVariant的时候需要准确给好每个node的variant
-                    console.log("------------");
-                    console.log(columns);
-                    for (let column of columns) {
+                    let length = columns.length;
+                    for (let i = 0; i <= length - 1; ++i) {
 
-                        if ("database" === column.variant) {
+                        let pre_pre_pre_column = columns[i - 3];
+                        let pre_pre_column = columns[i - 2];
+                        let pre_column = columns[i - 1];
+                        let column = columns[i];
 
+                        if ("object operator" === column.variant) {
 
-                        } else if ("object operator" === column.variant) {
+                            // 如果上一个字段是普通列
+                            if (pre_column && "column" === pre_column.variant) {
 
+                                // 给上个字段升级为表对象
+                                pre_column.variant = "table";
 
-                        } else if ("table" === column.variant) {
+                                // 给上上个字段升级为库对象
+                                if (pre_pre_column && "object operator" === pre_pre_column.variant) {
+                                    pre_pre_pre_column && (pre_pre_pre_column.variant = "database");
+                                }
+                            }
+                        } else if (pre_column && "Identifier" === pre_column.token && "recursive" === column.variant) {
 
-
-                        } else if ("column" === column.variant) {
-
-
-                        } else if ("recursive" === column.variant) {
-
-
+                            pre_column.variant = "column";
                         } else {
 
-                            throw new Error(tool.makeErrorObj("Error near : " + column.index, 10));
+                            "Identifier" === column.token && (column.variant = "column");
                         }
                     }
+
+                    // 使用正则验证一下
                 },
 
-                understandExprList(root) {
-
-                    // 第1种(只能有等号, 用于Update语句, 必须有逗号作为recursive) : name = "", age=12, ...
-                    // 第2种(支持任何运算符, 用于检索, 必须有And作为) : name = ""
-                },
-
-                understandValueList(root) {
+                understandWhereExprList(first) {
 
                 },
 
-                understandTableList(root) {
+                understandJoinExprList(first) {
 
-                    // db.table, db.table, ...
                 },
 
+                understandOrderByExprList(first) {
+
+                    console.log("-----------");
+                    console.log(first);
+                },
+
+                understandGroupByExprList(first) {
+
+                },
+
+                understandValueList(first) {
+
+                },
+
+                understandTableList(tables) {
+
+                    let length = tables.length;
+                    for (let i = 0; i <= length - 1; ++i) {
+
+                        let pre_pre_pre_table = tables[i - 3];
+                        let pre_pre_table = tables[i - 2];
+                        let pre_table = tables[i - 1];
+                        let table = tables[i];
+
+                        if ("object operator" === table.variant) {
+
+                            if (pre_table && "table" === pre_table.variant) {
+
+                                // 给上个字段升级为表对象
+                                pre_table.variant = "database";
+                            }
+                        }else {
+
+                            "Identifier" === table.token && (table.variant = "table");
+                        }
+                    }
+
+                    // 使用正则验证一下
+                },
+
+                understandLimitExprList(first) {
+
+
+                },
             },
 
             // 折叠函数
@@ -845,7 +880,7 @@
 
                     for (let i = 0; i <= length - 1; ++i) {
 
-                        let node = ast_outline[i];
+                        let node = ast_outline[i], pre_node = ast_outline[i - 1];
 
                         if (node && "close" !== node.variant && "expression" === node.type && "Keyword" !== node.token) {
 
@@ -859,6 +894,7 @@
                                 delete ast_outline[j];
                                 ++j;
                             }
+                            pre_node && (node_grouping['for'] = pre_node.variant);
 
                             // 从 i 至 j-1 都是连续的expression
                             ast_outline[i] = node_grouping;
@@ -904,6 +940,12 @@
                             break;
                         }
                     }
+                },
+
+                // 折叠出 Function 类型的节点
+                collapsingFunctionTypeNode(){
+
+                    // 如果上一个是非SELECT 且
                 },
 
                 // 因为折叠会出现索引连续不上和length不变的情况, 故而需要清理掉zombie数据
@@ -1198,6 +1240,9 @@
                         // 剪枝后的 ast outline
                         let root = globalVariableContainer.ast_outline_pruned;
 
+                        // 如果 AST Outline 有错, 则不能转成一棵AST
+
+
                         globalVariableContainer.ast_outline_transformed = root;
                     },
 
@@ -1252,6 +1297,8 @@
                 globalVariableContainer.sql = sql;
                 globalVariableContainer.debug = true;
 
+                console.time("runtime");
+
                 // 词法分析
                 debugMsg("Lexical Analysis ...", debugColor.loading);
                 debugMsg("Clear SQL ... Results are as follows", debugColor.info);
@@ -1285,6 +1332,8 @@
 
                 debugMsg("End Syntactic Analysis\n\n", debugColor.success);
 
+
+                console.timeEnd("runtime");
             },
 
             // 单步, 获取每步的执行情况

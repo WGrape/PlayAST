@@ -50,7 +50,12 @@
 
 <p id="SQL_Review"></p>
 
-<textarea id="SQL_Input">SELECT * FROM ( SELECT id, name FROM ( SELECT age FROM test as t1, test2 as t2 left join test3 as t3 on t2.u_id = t3.id WHERE id>0 AND id<87 AND name='test' and t1.id=t2.id group by t1.name ORDER BY id DESC LIMIT 5 ) )</textarea>
+<!--<textarea id="SQL_Input">SELECT * FROM ( SELECT id, name FROM ( SELECT age FROM test as t1, test2 as t2 left join test3 as t3 on t2.u_id = t3.id WHERE id>0 AND id<87 AND name='test' and t1.id=t2.id group by t1.name ORDER BY id DESC LIMIT 5 ) )</textarea>-->
+<!--<textarea id="SQL_Input">SELECT d1.t1.c1 , d1.t1.c2, d1.t1.c3 from d1.t1 ;</textarea>-->
+<!--SELECT d1.t1.c1 , d1.t1.c2, d1.t1.c3, c4, t1.c5 , , , c6,  from d1.t1, d2.t2, d3.t3, t4 , , , , ;-->
+<!--select * from a order by code, name desc;-->
+<!--SELECT d1.t1.c1 , d1.t1.c2, d1.t1.c3, c4, t1.c5 , , , c6,  from d1.t1 ;-->
+<textarea id="SQL_Input">select * from a order by code desc, name desc;</textarea>
 
 <button id="Go">Go</button>
 
