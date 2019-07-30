@@ -409,7 +409,7 @@
                 ",": "recursive",
                 "and": "recursive",
                 "&&": "recursive",
-                "*": "all columns",
+                // "*": "all columns",
                 ".": "object operator",
                 // "on": "",
                 ">": "operator",
@@ -461,6 +461,17 @@
         constContainer: constContainer,
 
         globalVariableContainer: globalVariableContainer,
+
+        // 创建错误对象
+        makeErrorObj(index = 0, msg = "", code = 0, extra = {}) {
+
+            // 选出 index 附近的那些字符, 连接到一起作为错误信息, 以方便错误定位
+            return {
+                msg: msg,
+                code: code,
+                extra: extra,
+            };
+        },
 
         // 在期望的字符处插入空白
         insertWhiteSpaceInExceptChars(str, except_chars) {
@@ -638,7 +649,7 @@
                 root = this.collapsing.rebuildASTIndex(root);
 
                 // 最后 sensing grouping 即可
-                this.sensing.sensingGrouping(root);
+                this.sensing.sensingGrouping(root, sub_query_level);
 
                 return root;
             },
@@ -769,32 +780,78 @@
             // sensing函数(make sense)
             sensing: {
 
-                sensingGrouping(root) {
+                sensingGrouping(root, sub_query_level) {
 
-                    // 理通column列表
-                    this.understandColumnList(root);
+                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                    let length = ast_outline.length;
 
-                    // 理通数据表列表
-                    this.understandTableList(root);
+                    for (let i = 0; i <= length - 1; ++i) {
 
-                    // 理通表达式列表
-                    this.understandExprList(root);
+                        if ("grouping" !== ast_outline[i].type) {
 
-                    // 理通括号列表
-                    this.understandValueList(root);
+                            continue;
+                        }
 
-                    // 理通值列表
-                    this.understandValueList(root);
+                        let node = ast_outline[i];
+                        let pre_node = ast_outline[i - 1];
+                        let next_node = ast_outline[i + 1];
+
+                        // 理通括号列表(处理括号, 以免影响后续处理)
+                        this.understandValueList(ast_outline);
+
+                        if (pre_node && "select" === pre_node.variant) {
+
+                            // 理通column列表
+                            this.understandColumnList(node.grouping);
+                        } else if (pre_node && "from" === pre_node.variant) {
+
+                            // 理通数据表列表
+                            this.understandTableList(node.grouping);
+                        } else if (pre_node && "where" === pre_node.variant) {
+
+                            // 理通运算表达式列表
+                            this.understandExprList(node.grouping);
+                        } else if (pre_node && "set" === pre_node.variant) {
+
+                            // 理通运算表达式列表
+                            this.understandExprList(node.grouping);
+                        } else if (pre_node && "values" === pre_node.variant) {
+
+                            // 理通值列表
+                            this.understandValueList(node.grouping);
+                        }
+
+                    }
                 },
 
-                understandColumnList(root) {
+                understandColumnList(columns) {
 
-                    // db.table.column, db.table.column, ...
-                    for (let node of root) {
+                    // [db.][table.]column, [db.][table.]column, ...
+                    // 根据variant去判断, 所以diffingNodePropertyVariant的时候需要准确给好每个node的variant
+                    console.log("------------");
+                    console.log(columns);
+                    for (let column of columns) {
 
-                        console.log(node);
+                        if ("database" === column.variant) {
+
+
+                        } else if ("object operator" === column.variant) {
+
+
+                        } else if ("table" === column.variant) {
+
+
+                        } else if ("column" === column.variant) {
+
+
+                        } else if ("recursive" === column.variant) {
+
+
+                        } else {
+
+                            throw new Error(tool.makeErrorObj("Error near : " + column.index, 10));
+                        }
                     }
-
                 },
 
                 understandExprList(root) {
@@ -954,7 +1011,7 @@
                 } catch (e) {
 
                     // 解析失败
-                    throw e; // alert("解析失败 : " + e.message);
+                    throw e.msg; // alert("解析失败 : " + e.message);
                 }
 
                 // OK ! Sql passed the check !
@@ -1152,7 +1209,7 @@
                                 type: token_obj.value,
                                 variant: token_obj.value,
                                 value: token_obj.value,
-                                index: token_obj.index
+                                index: token_obj.index, // 一定要保证给每个节点都有index属性, 因为这个属性值用于报错定位
                             });
 
                             node !== null && root.children.push(node);
