@@ -640,6 +640,7 @@
                 this.diffing.diffingNodePropertyType(root, sub_query_level);
                 this.diffing.diffingNodePropertyToken(root, sub_query_level);
                 this.diffing.diffingNodePropertyVariant(root, sub_query_level);
+                this.diffing.diffingNodePropertyMatchedBracketIndex(root, sub_query_level);
 
                 // 然后 collapsing
                 this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
@@ -700,7 +701,6 @@
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let length = ast_outline.length;
 
-                    let right_bracket_num = 0;
                     let tokenValueMapVariant = constContainer.tokenRelationAST.tokenValueMapVariant;
                     for (let i = 0; i <= length - 1; ++i) {
 
@@ -708,13 +708,6 @@
                         let pre_pre_node = ast_outline[i - 2];
                         let node = ast_outline[i];
                         let next_node = ast_outline[i + 1];
-
-                        // 如果当前值是括号, 则添加 matched_bracket_index 属性
-                        if (")" === node.value) {
-
-                            ++right_bracket_num;
-                            node.matched_bracket_index = tool.getLastNthLeftBracketASTIndex(right_bracket_num);
-                        }
 
                         // 根据当前节点的 Value 对当前节点Variant进行Diff。node.variant === node.value 表示当前节点的 variant 值还是当时创建的时候给的, 所以需要对它Diff
                         node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
@@ -726,55 +719,28 @@
                         if (pre_node.variant.indexOf("join") > -1) {
 
                             node.variant = "table";
-                        } else {
-                            switch (pre_node.variant) {
-
-                                case "select":
-                                    node.variant = (node.variant === node.value) ? "column" : node.variant;
-                                    break;
-
-                                case "recursive":
-                                case "alias":
-                                    pre_pre_node && (node.variant = pre_pre_node.variant);
-                                    break;
-
-                                case "from":
-
-                                    node.variant = (node.variant === node.value) ? "table" : node.variant;
-                                    break;
-
-                                case "on":
-                                    if ("object operator" === next_node.variant) {
-
-                                        node.variant = "database";
-                                    }
-                                    break;
-
-                                case "=":
-                                    if ("object operator" === next_node.variant) {
-
-                                        node.variant = "database";
-                                    }
-                                    break;
-
-                                case "object operator":
-                                    if ("database" === pre_pre_node.variant) {
-
-                                        node.variant = "table";
-                                    }
-                                    break;
-
-                                case "where":
-
-                                    node.variant = (node.variant === node.value) ? "condition" : node.variant;
-                                    break;
-
-                                default:
-                                    break;
-                            }
                         }
                     }
                 },
+
+                // diff节点的 matched_bracket_index 属性
+                diffingNodePropertyMatchedBracketIndex(root, sub_query_level) {
+
+                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                    let length = ast_outline.length;
+                    let right_bracket_num = 0;
+
+                    for (let i = 0; i <= length - 1; ++i) {
+
+                        let node = ast_outline[i];
+
+                        if (")" === node.value) {
+
+                            ++right_bracket_num;
+                            node.matched_bracket_index = tool.getLastNthLeftBracketASTIndex(right_bracket_num);
+                        }
+                    }
+                }
             },
 
             // sensing函数(make sense)
@@ -795,9 +761,6 @@
                         let node = ast_outline[i];
                         let pre_node = ast_outline[i - 1];
                         let next_node = ast_outline[i + 1];
-
-                        // 理通括号列表(处理括号, 以免影响后续处理)
-                        this.understandValueList(ast_outline);
 
                         if (pre_node && "select" === pre_node.variant) {
 
@@ -858,11 +821,6 @@
 
                     // 第1种(只能有等号, 用于Update语句, 必须有逗号作为recursive) : name = "", age=12, ...
                     // 第2种(支持任何运算符, 用于检索, 必须有And作为) : name = ""
-                },
-
-                understandBracketList(root) {
-
-                    // 匹配括号, 判断括号匹配是否正确
                 },
 
                 understandValueList(root) {
