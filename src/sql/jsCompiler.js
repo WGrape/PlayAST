@@ -412,14 +412,17 @@
                 // "*": "all columns",
                 ".": "object operator",
                 // "on": "",
+
                 ">": "operator",
                 "<": "operator",
                 "=": "operator",
+                "!=": "operator",
+
                 ";": "close",
                 "(": "left_bracket",
                 ")": "right_bracket",
 
-                "desc" : "sort",
+                "desc": "sort",
                 "asc": "sort",
 
                 // 写下支持的函数列表
@@ -652,7 +655,7 @@
                 this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
                 root = this.collapsing.rebuildASTIndex(root);
 
-                this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
+                this.collapsing.collapsingFunctionTypeNode(root, sub_query_level);
                 root = this.collapsing.rebuildASTIndex(root);
 
                 this.collapsing.collapsingGroupingTypeNode(root, sub_query_level);
@@ -815,8 +818,38 @@
                     // 使用正则验证一下
                 },
 
-                understandWhereExprList(first) {
+                understandWhereExprList(item) {
 
+                    return;
+                    let length = item.length;
+                    for (let i = 0; i <= length - 1; ++i) {
+
+                        let pre_pre_pre_item = item[i - 3];
+                        let pre_pre_item = item[i - 2];
+                        let pre_item = item[i - 1];
+                        let item = item[i];
+
+                        if ("operator" === item.variant) {
+
+                            // 如果上一个字段是普通列
+                            if (pre_item && "column" === pre_item.variant) {
+
+                                // 给上个字段升级为表对象
+                                pre_item.variant = "table";
+
+                                // 给上上个字段升级为库对象
+                                if (pre_pre_item && "object operator" === pre_pre_item.variant) {
+                                    pre_pre_pre_item && (pre_pre_pre_item.variant = "database");
+                                }
+                            }
+                        } else if (pre_item && "Identifier" === pre_item.token && "recursive" === item.variant) {
+
+                            pre_item.variant = "item";
+                        } else {
+
+                            "Identifier" === item.token && (item.variant = "item");
+                        }
+                    }
                 },
 
                 understandJoinExprList(first) {
@@ -852,7 +885,7 @@
                                 // 给上个字段升级为表对象
                                 pre_table.variant = "database";
                             }
-                        }else {
+                        } else {
 
                             "Identifier" === table.token && (table.variant = "table");
                         }
@@ -880,13 +913,13 @@
 
                         let node = ast_outline[i], pre_node = ast_outline[i - 1];
 
-                        if (node && "close" !== node.variant && "expression" === node.type && "Keyword" !== node.token) {
+                        if ((node && "close" !== node.variant) && (("function" === node.type) || ("expression" === node.type && "Keyword" !== node.token))) {
 
                             let node_grouping = {type: "grouping", grouping: []};
 
                             // 把所有连续的 expression 都打入 node_grouping 中
                             let j = i;
-                            while (j <= length - 1 && "expression" === ast_outline[j].type) {
+                            while (j <= length - 1 && ("function" === ast_outline[j].type || "expression" === ast_outline[j].type)) {
 
                                 node_grouping.grouping.push(ast_outline[j]);
                                 delete ast_outline[j];
@@ -935,15 +968,37 @@
                             }
                             ast_outline[i] = node_subquery;
 
-                            break;
+                            break; // Todo:是否需要跳出
                         }
                     }
                 },
 
                 // 折叠出 Function 类型的节点
-                collapsingFunctionTypeNode(){
+                collapsingFunctionTypeNode(root, sub_query_level) {
 
-                    // 如果上一个是非SELECT 且
+                    // 整理出来 Subquery, Grouping 之类的
+                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
+                    let length = ast_outline.length;
+
+                    for (let i = 0; i <= length - 1 && ast_outline[i]; ++i) {
+
+                        // 如果出现子查询, 则全部都加到query中
+                        if ("function" === ast_outline[i].variant) {
+
+                            let node_function = {type: "function", function: []};
+
+                            // 未遇到 ) 括号前, 把遇到的参数都塞进去
+                            "left_bracket" === ast_outline[i + 1].variant && delete ast_outline[i + 1]; // 把左括号删掉
+                            let j;
+                            for (j = i + 2; "right_bracket" !== ast_outline[j].variant; ++j) {
+
+                                node_function.function.push(ast_outline[j]);
+                                delete ast_outline[j];
+                            }
+                            "right_bracket" === ast_outline[j].variant && delete ast_outline[j]; // 把右括号删掉
+                            ast_outline[i] = node_function;
+                        }
+                    }
                 },
 
                 // 因为折叠会出现索引连续不上和length不变的情况, 故而需要清理掉zombie数据
@@ -1077,6 +1132,7 @@
 
                             // 生成node, 并添加 index 属性
                             let lexicon = lexicon_arr[i];
+                            let next_lexicon = lexicon_arr[i + 1];
                             let node = this.generateTokenNode(lexicon);
 
                             // 把 node 结点扔到 lexicon_arr
@@ -1091,6 +1147,10 @@
                             } else if (["group", "order"].indexOf(lexicon) > -1) {
 
                                 node.value = lexicon + " by";
+                                i += 2;
+                            } else if ("!" === lexicon && "=" === next_lexicon) {
+
+                                node.value = "!=";
                                 i += 2;
                             } else {
 

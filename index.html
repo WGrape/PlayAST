@@ -57,7 +57,7 @@
 <!--SELECT d1.t1.c1 , d1.t1.c2, d1.t1.c3, c4, t1.c5 , , , c6,  from d1.t1 ;-->
 <!--select * from a order by code desc, name desc;-->
 <!--select * from ( select * from ( select * from a group by t.a.name order by d1.t1.code desc, d1.t1.name desc ) )-->
-<textarea id="SQL_Input">select * from ( select * from ( select * from a group by t.a.name order by d1.t1.code desc, d1.t1.name desc ) )</textarea>
+<textarea id="SQL_Input">select * from ( select * from ( select * from a group by t.a.name where id > 1 and id != 87 and concat( name ) = "eason" order by d1.t1.code desc, d1.t1.name desc ) )</textarea>
 
 <button id="Go">Go</button>
 
