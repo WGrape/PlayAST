@@ -1,5 +1,7 @@
 /**
- *
+ * Todo:
+ * 1. 缺少 对 having 的支持
+ * 2. 缺少 对 函数 的友好支持
  * Author:Lvsi
  */
 (function () {
@@ -818,36 +820,27 @@
                     // 使用正则验证一下
                 },
 
-                understandWhereExprList(item) {
+                understandWhereExprList(items) {
 
-                    return;
-                    let length = item.length;
+                    let length = items.length;
                     for (let i = 0; i <= length - 1; ++i) {
 
-                        let pre_pre_pre_item = item[i - 3];
-                        let pre_pre_item = item[i - 2];
-                        let pre_item = item[i - 1];
-                        let item = item[i];
+                        let pre_item = items[i - 1];
+                        let item = items[i];
 
                         if ("operator" === item.variant) {
 
                             // 如果上一个字段是普通列
-                            if (pre_item && "column" === pre_item.variant) {
+                            if (pre_item && "Identifier" === pre_item.token) {
 
-                                // 给上个字段升级为表对象
-                                pre_item.variant = "table";
-
-                                // 给上上个字段升级为库对象
-                                if (pre_pre_item && "object operator" === pre_pre_item.variant) {
-                                    pre_pre_pre_item && (pre_pre_pre_item.variant = "database");
-                                }
+                                pre_item.variant = "left";
                             }
-                        } else if (pre_item && "Identifier" === pre_item.token && "recursive" === item.variant) {
+                        } else if (pre_item && "function" !== pre_item.type && "recursive" === item.variant) {
 
-                            pre_item.variant = "item";
+                            pre_item.variant = "right";
                         } else {
 
-                            "Identifier" === item.token && (item.variant = "item");
+                            "Identifier" === item.token && (item.variant = "left");
                         }
                     }
                 },
@@ -887,6 +880,7 @@
                             }
                         } else {
 
+                            // 没有写 as 的时候, 也支持识别别名table
                             "Identifier" === table.token && (table.variant = "table");
                         }
                     }
@@ -894,9 +888,23 @@
                     // 使用正则验证一下
                 },
 
-                understandLimitExprList(first) {
+                understandLimitExprList(numbers) {
 
+                    let length = numbers.length;
 
+                    for (let i = 0; i <= length - 1; ++i) {
+
+                        let number = numbers[i];
+                        if ("Numeric" === number.token) {
+
+                            number.variant = "Numeric";
+                        } else if ("recursive" === number.variant) {
+
+                        } else {
+
+                            throw new Error(tool.makeErrorObj(number.index));
+                        }
+                    }
                 },
             },
 
@@ -919,7 +927,7 @@
 
                             // 把所有连续的 expression 都打入 node_grouping 中
                             let j = i;
-                            while (j <= length - 1 && ("function" === ast_outline[j].type || "expression" === ast_outline[j].type)) {
+                            while (j <= length - 1 && "close" !== ast_outline[j].variant && ("function" === ast_outline[j].type || "expression" === ast_outline[j].type)) {
 
                                 node_grouping.grouping.push(ast_outline[j]);
                                 delete ast_outline[j];
@@ -992,11 +1000,13 @@
                             let j;
                             for (j = i + 2; "right_bracket" !== ast_outline[j].variant; ++j) {
 
+                                ast_outline[j].variant = "param";
                                 node_function.function.push(ast_outline[j]);
                                 delete ast_outline[j];
                             }
                             "right_bracket" === ast_outline[j].variant && delete ast_outline[j]; // 把右括号删掉
                             ast_outline[i] = node_function;
+                            i = j;
                         }
                     }
                 },
@@ -1064,7 +1074,7 @@
                 } catch (e) {
 
                     // 解析失败
-                    throw e.msg; // alert("解析失败 : " + e.message);
+                    throw "Error Near " + e.index + " , " + e.msg; // alert("解析失败 : " + e.message);
                 }
 
                 // OK ! Sql passed the check !
@@ -1148,9 +1158,9 @@
 
                                 node.value = lexicon + " by";
                                 i += 2;
-                            } else if ("!" === lexicon && "=" === next_lexicon) {
+                            } else if (["!", ">", "<"].indexOf(lexicon) > -1 && "=" === next_lexicon) {
 
-                                node.value = "!=";
+                                node.value = lexicon + "=";
                                 i += 2;
                             } else {
 
@@ -1299,7 +1309,6 @@
                         let root = globalVariableContainer.ast_outline_pruned;
 
                         // 如果 AST Outline 有错, 则不能转成一棵AST
-
 
                         globalVariableContainer.ast_outline_transformed = root;
                     },
