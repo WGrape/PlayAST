@@ -845,8 +845,37 @@
                     }
                 },
 
-                understandJoinExprList(first) {
+                understandJoinExprList(columns) {
 
+                    let length = columns.length;
+                    for (let i = 0; i <= length - 1; ++i) {
+
+                        let pre_pre_pre_column = columns[i - 3];
+                        let pre_pre_column = columns[i - 2];
+                        let pre_column = columns[i - 1];
+                        let column = columns[i];
+
+                        if ("object operator" === column.variant) {
+
+                            // 如果上一个字段是普通列
+                            if (pre_column && "column" === pre_column.variant) {
+
+                                // 给上个字段升级为表对象
+                                pre_column.variant = "table";
+
+                                // 给上上个字段升级为库对象
+                                if (pre_pre_column && "object operator" === pre_pre_column.variant) {
+                                    pre_pre_pre_column && (pre_pre_pre_column.variant = "database");
+                                }
+                            }
+                        } else if (pre_column && "Identifier" === pre_column.token && "on" === column.value) {
+
+                            pre_column.variant = "column";
+                        } else {
+
+                            "Identifier" === column.token && (column.variant = "column");
+                        }
+                    }
                 },
 
                 understandOrderByExprList(first) {
@@ -859,8 +888,23 @@
                     tool.pruningAST.sensing.understandColumnList(first);
                 },
 
-                understandValueList(first) {
+                understandValueList(values) {
 
+                    let length = values.length;
+
+                    for (let i = 0; i <= length - 1; ++i) {
+
+                        let value = values[i];
+                        if ("Numeric" === value.token || "String" === value.token) {
+
+                            value.variant = value.token;
+                        } else if ("recursive" === value.variant) {
+
+                        } else {
+
+                            throw new Error(tool.makeErrorObj(number.index));
+                        }
+                    }
                 },
 
                 understandTableList(tables) {
