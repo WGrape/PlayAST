@@ -1617,7 +1617,7 @@
                                 sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
                             } else if ("function" === property) {
 
-                                sql = sql + ")";
+                                sql = sql + " " + ")";
                             }
 
                         } else if (tool.propertyIsObj(obj[property])) {

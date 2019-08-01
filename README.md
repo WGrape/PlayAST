@@ -13,6 +13,15 @@ PlayAST : Play With Abstract Syntax Tree
 
 #### SQL AST
 
+运行 ```index.html``` 代码查看demo。 
+
+```
+目前支持功能: 
+1. SQL语法检查
+2. SQL代码格式化(美化)
+3. 通过AST树可以开发更多的特性 ...
+```
+
 起初是因为需要做前端SQL语法检查，故而最先选择了 SQL AST 用 JS 实现，并提供了 Debug 以调试解析过程中的详细处理 。具体查看源码：```PlayAST/src/sql/jsCompiler.js``` 。
 
 <br><br>
@@ -21,3 +30,7 @@ PlayAST : Play With Abstract Syntax Tree
 
 ## 参考
 [详见资料学习参考](./extra/docs/reference.md)
+
+
+
+
