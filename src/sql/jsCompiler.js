@@ -3,6 +3,8 @@
  * 1. 缺少 对 having 的支持
  * 2. 缺少 对 函数 的友好支持
  * 3. 只支持3个子查询(即3个select)
+ * 4. 对 ` 字符的处理
+ * 5. 不怕输入任何的括号, 因为在词法分析阶段, 就会把那些不必要的括号都删除掉, 只留下必要的括号, 这样也方便后续处理。
  * Author:Lvsi
  */
 (function () {
@@ -350,10 +352,10 @@
         supportASTNode: {
 
             // 支持的所有节点属性
-            properties: ["type", "variant", "value", "index", "children", "subquery", "sub_query_level", "grouping", "for", "matched_bracket_index"],
+            properties: ["type", "variant", "value", "index", "children", "subquery", "sub_query_level", "grouping", "for", "matched_bracket_index", "function", "function_name"],
 
             // 支持的 type 属性值
-            propertyTypeAssignment: ["statement", "clause", "predicate", "expression", "grouping", "subquery"],
+            propertyTypeAssignment: ["statement", "clause", "predicate", "expression", "grouping", "subquery", "function"],
 
             // 支持的 variant 属性值
             propertyVariantAssignment: [
@@ -390,7 +392,7 @@
                 "select": "statement",
                 "update": "statement",
                 "delete": "statement",
-                "insert": "statement",
+                "insert into": "statement",
 
                 "order by": "clause",
                 "group by": "clause",
@@ -415,6 +417,8 @@
                 // "*": "all columns",
                 ".": "object operator",
                 // "on": "",
+
+                "insert into": "insert",
 
                 ">": "operator",
                 "<": "operator",
@@ -518,14 +522,19 @@
         },
 
         // 创建错误对象
-        makeErrorObj(index = 0, msg = "", code = 0, extra = {}) {
+        makeErrorObj(index = false, msg = "", code = 0, extra = {}) {
 
             // 选出 index 附近的那些字符, 连接到一起作为错误信息, 以方便错误定位
-            return {
+            let obj = {
                 msg: msg,
+                index: index,
                 code: code,
                 extra: extra,
             };
+
+            false === index && delete obj.index;
+
+            return obj;
         },
 
         // 在期望的字符处插入空白
@@ -603,7 +612,7 @@
                 }
             }
 
-            throw new Error("Not match left bracket");
+            throw tool.makeErrorObj(false, "Not match left bracket");
         },
 
         // 获取最后第N个右括号的下标(从右向左)
@@ -627,7 +636,7 @@
                 }
             }
 
-            throw new Error("Not match right bracket");
+            throw tool.makeErrorObj(false, "Not match right bracket");
         },
 
         // 获取子查询个数
@@ -647,8 +656,10 @@
 
             if (num > 2) {
 
-                //throw new Error("只支持2层嵌套子查询");
+                throw tool.makeErrorObj(false, "只支持2层嵌套子查询");
             }
+
+            num = (num < 1) ? 1 : num;
 
             return num;
         },
@@ -737,7 +748,7 @@
                         // 检查所有的 type 值是否都是受支持的
                         if (constContainer.supportASTNode.propertyTypeAssignment.indexOf(node.type) < 0) {
 
-                            throw new Error("出现非法Type属性值(" + node.type + ")节点");
+                            throw tool.makeErrorObj(node.index, "出现非法Type属性值(" + node.type + ")节点");
                         }
                     }
                 },
@@ -800,10 +811,12 @@
 
                 sensingGrouping(root, sub_query_level) {
 
-                    let map = {
+                    let grouping_for_map = {
 
                         "select": this.understandColumnList,
                         "from": this.understandTableList,
+
+                        "insert": this.understandTableList,
 
                         "values": this.understandValueList,
 
@@ -831,7 +844,7 @@
                         }
 
                         let node = ast_outline[i];
-                        map[node['for']] && map[node['for']](node['grouping']);
+                        grouping_for_map[node['for']] && grouping_for_map[node['for']](node['grouping']);
                     }
                 },
 
@@ -952,7 +965,8 @@
 
                         } else {
 
-                            throw new Error(tool.makeErrorObj(number.index));
+                            alert(value.index);
+                            // throw tool.makeErrorObj(value.index);
                         }
                     }
                 },
@@ -965,7 +979,21 @@
                         let pre_table = tables[i - 1];
                         let table = tables[i];
 
-                        if ("object operator" === table.variant) {
+                        if (1 === i && "insert" === globalVariableContainer.statement_type) {
+
+                            // 把第一个左括号和第1个右括号之间的都选出来(左数)
+                            let left = tool.getLastNthLeftBracketASTIndex(2);
+                            let right = tool.getLastNthRightBracketASTIndex(2);
+                            tool.pruningAST.sensing.understandColumnList(tables.slice(left, right-1));
+
+                            // 把第一个左括号和第1个右括号之间的都选出来(右数)
+                            left = tool.getLastNthLeftBracketASTIndex(1);
+                            right = tool.getLastNthRightBracketASTIndex(1);
+                            tool.pruningAST.sensing.understandValueList(tables.slice(left, right-1));
+
+                            break;
+
+                        } else if ("object operator" === table.variant) {
 
                             if (pre_table && "table" === pre_table.variant) {
 
@@ -996,7 +1024,7 @@
 
                         } else {
 
-                            throw new Error(tool.makeErrorObj(number.index));
+                            throw tool.makeErrorObj(number.index);
                         }
                     }
                 },
@@ -1254,7 +1282,15 @@
                             node.index = token_arr.length - 1;
 
                             // 如果当前词是以下, 则需要合并
-                            if (["left", "right", "inner", "full"].indexOf(lexicon) > -1) {
+                            if ("insert" === lexicon) {
+
+                                if (next_lexicon && "into" !== next_lexicon) {
+
+                                    throw tool.makeErrorObj(1, "Insert语句缺少into");
+                                }
+                                node.value = lexicon + " into";
+                                i += 2;
+                            } else if (["left", "right", "inner", "full"].indexOf(lexicon) > -1) {
 
                                 node.value = lexicon + " join";
                                 i += 2;
@@ -1359,14 +1395,16 @@
                             case "update":
                             case "delete":
                             case "insert":
+                            case "insert into":
                                 globalVariableContainer.statement_type = token_table[0].value;
+                                globalVariableContainer.statement_type = ("insert into") ? "insert" : token_table[0].value;
                                 break;
 
                             default:
                                 let msg = "只支持CURD操作";
                                 globalVariableContainer.sql_error = true;
                                 globalVariableContainer.sql_error_msg = msg;
-                                throw new Error(msg);
+                                throw tool.makeErrorObj(false, "只支持CURD操作");
                         }
                     },
 
@@ -1504,7 +1542,7 @@
                 compiler.syntacticAnalysis.makeASTOutlineTransforming();
                 debugMsg(this.steps.syntacticAnalysis.getASTOutlineTransformed());
 
-                debugMsg("Optimizing AST Outline ... Results are as follows", debugColor.info);
+                debugMsg("Optimizing AST ... Results are as follows", debugColor.info);
                 compiler.syntacticAnalysis.optimizeAST();
                 debugMsg(this.steps.syntacticAnalysis.getAST());
 
