@@ -5,6 +5,7 @@
  * 3. 只支持3个子查询(即3个select)
  * 4. 对 ` 字符的处理
  * 5. 不怕输入任何的括号, 因为在词法分析阶段, 就会把那些不必要的括号都删除掉, 只留下必要的括号, 这样也方便后续处理。
+ * 6. 子查询 和 values 都对括号做了删除处理(这里设计还待确定)
  * Author:Lvsi
  */
 (function () {
@@ -394,6 +395,8 @@
                 "delete": "statement",
                 "insert into": "statement",
 
+                "set": "clause",
+                "values": "clause",
                 "order by": "clause",
                 "group by": "clause",
                 "having": "clause",
@@ -401,6 +404,7 @@
                 "where": "clause",
                 "limit": "clause",
 
+                "join": "predicate",
                 "left join": "predicate",
                 "right join": "predicate",
                 "inner join": "predicate",
@@ -654,9 +658,9 @@
 
             //num -= 1;
 
-            if (num > 2) {
+            if (num > 3) {
 
-                throw tool.makeErrorObj(false, "只支持2层嵌套子查询");
+                throw tool.makeErrorObj(false, "只支持3层嵌套子查询");
             }
 
             num = (num < 1) ? 1 : num;
@@ -814,9 +818,10 @@
                     let grouping_for_map = {
 
                         "select": this.understandColumnList,
-                        "from": this.understandTableList,
 
                         "insert": this.understandTableList,
+                        "from": this.understandTableList,
+                        "update": this.understandTableList,
 
                         "values": this.understandValueList,
 
@@ -827,6 +832,7 @@
                         "inner join": this.understandJoinExprList,
 
                         "where": this.understandWhereExprList,
+                        "set": this.understandWhereExprList, // Todo:严格模式, 即运算符只能是等号
                         "group by": this.understandGroupByExprList,
                         "order by": this.understandOrderByExprList,
 
@@ -838,12 +844,19 @@
 
                     for (let i = 0; i <= length - 1; ++i) {
 
+                        let node = ast_outline[i];
+
                         if ("grouping" !== ast_outline[i].type) {
 
                             continue;
+                        } else if ("values" === node['for']) {
+
+                            // 第一个和最后一个是括号, 所以slice
+                            let values = node['grouping'].slice(1, node['grouping'].length - 1);
+                            grouping_for_map[node['for']] && grouping_for_map[node['for']](values);
+                            continue;
                         }
 
-                        let node = ast_outline[i];
                         grouping_for_map[node['for']] && grouping_for_map[node['for']](node['grouping']);
                     }
                 },
@@ -917,6 +930,7 @@
                         let pre_pre_column = columns[i - 2];
                         let pre_column = columns[i - 1];
                         let column = columns[i];
+                        let next_column = columns[i + 1];
 
                         if ("object operator" === column.variant) {
 
@@ -931,12 +945,12 @@
                                     pre_pre_pre_column && (pre_pre_pre_column.variant = "database");
                                 }
                             }
-                        } else if (pre_column && "Identifier" === pre_column.token && "on" === column.value) {
+                        } else if (pre_column && "Identifier" === pre_column.token && pre_pre_column && "object operator" === pre_pre_column.variant && "on" === column.value) {
 
                             pre_column.variant = "column";
                         } else {
 
-                            "Identifier" === column.token && (column.variant = "column");
+                            "Identifier" === column.token && (column.variant = (next_column && "on" === next_column.value) ? "table" : "column");
                         }
                     }
                 },
@@ -965,8 +979,7 @@
 
                         } else {
 
-                            alert(value.index);
-                            // throw tool.makeErrorObj(value.index);
+                            throw tool.makeErrorObj(value.index);
                         }
                     }
                 },
@@ -981,15 +994,22 @@
 
                         if (1 === i && "insert" === globalVariableContainer.statement_type) {
 
-                            // 把第一个左括号和第1个右括号之间的都选出来(左数)
-                            let left = tool.getLastNthLeftBracketASTIndex(2);
-                            let right = tool.getLastNthRightBracketASTIndex(2);
-                            tool.pruningAST.sensing.understandColumnList(tables.slice(left, right-1));
+                            let columns = [];
 
-                            // 把第一个左括号和第1个右括号之间的都选出来(右数)
-                            left = tool.getLastNthLeftBracketASTIndex(1);
-                            right = tool.getLastNthRightBracketASTIndex(1);
-                            tool.pruningAST.sensing.understandValueList(tables.slice(left, right-1));
+                            // 把第一个左括号和第1个右括号之间的都选出来(左数)
+                            let right = tool.getLastNthRightBracketASTIndex(2);
+                            for (let j = 2; j <= length - 1; ++j) {
+
+                                if (right === tables[j].index) {
+
+                                    break;
+                                } else {
+
+                                    columns.push(tables[j]);
+                                }
+                            }
+
+                            tool.pruningAST.sensing.understandColumnList(columns);
 
                             break;
 
@@ -1397,7 +1417,7 @@
                             case "insert":
                             case "insert into":
                                 globalVariableContainer.statement_type = token_table[0].value;
-                                globalVariableContainer.statement_type = ("insert into") ? "insert" : token_table[0].value;
+                                globalVariableContainer.statement_type = ("insert into" === token_table[0].value) ? "insert" : token_table[0].value;
                                 break;
 
                             default:
