@@ -29,23 +29,23 @@ function consoleShowAST(sql_review_obj) {
 
     console.log("\n%c 第 1 阶段, 词法分析 :", 'color:#FF9800;');
     console.log("\n%c sql_cleared 如下:", 'color:green;');
-    console.log(sql_review_obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLCleared());
+    console.log(sql_review_obj.SQLCompilerAPI.steps.lexicalAnalysis.getSQLCleared());
 
     console.log("\n%c 分词数组 如下:", 'color:green;');
-    console.log(sql_review_obj.SQLCompilerDebug.steps.lexicalAnalysis.getSQLDemarcated());
+    console.log(sql_review_obj.SQLCompilerAPI.steps.lexicalAnalysis.getSQLDemarcated());
 
     console.log("\n%c Token Table 如下:", 'color:green;');
-    console.log(sql_review_obj.SQLCompilerDebug.steps.lexicalAnalysis.getTokenTable());
+    console.log(sql_review_obj.SQLCompilerAPI.steps.lexicalAnalysis.getTokenTable());
 
     console.log("\n%c 第 2 阶段, 语法分析 :", 'color:#FF9800;');
-    console.log("\n%c statement_type 为 : " + sql_review_obj.SQLCompilerDebug.steps.syntacticAnalysis.getStatementType(), 'color:green;');
+    console.log("\n%c statement_type 为 : " + sql_review_obj.SQLCompilerAPI.steps.syntacticAnalysis.getStatementType(), 'color:green;');
 
     console.log("\n%c AST Outline 如下:", 'color:green;');
-    console.log(sql_review_obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutline());
+    console.log(sql_review_obj.SQLCompilerAPI.steps.syntacticAnalysis.getASTOutline());
 
     console.log("\n%c AST Outline Pruned 如下:", 'color:green;');
 
-    let result = sql_review_obj.SQLCompilerDebug.steps.syntacticAnalysis.getASTOutlinePruned();
+    let result = sql_review_obj.SQLCompilerAPI.steps.syntacticAnalysis.getASTOutlinePruned();
     console.log(result);
 }
 

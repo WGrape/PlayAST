@@ -15,7 +15,9 @@ PlayAST : Play With Abstract Syntax Tree
 
 起初是因为需要做前端SQL语法检查，故而最先选择了 SQL AST 用 JS 实现，并提供了 Debug 以调试解析过程中的详细处理 。具体查看源码：```PlayAST/src/sql/jsCompiler.js``` 。
 
+<br><br>
 
+<img src="./extra/images/demo-sql-js.gif">
 
 ## 参考
 [详见资料学习参考](./extra/docs/reference.md)

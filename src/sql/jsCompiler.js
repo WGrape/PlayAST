@@ -2,6 +2,7 @@
  * Todo:
  * 1. 缺少 对 having 的支持
  * 2. 缺少 对 函数 的友好支持
+ * 3. 只支持3个子查询(即3个select)
  * Author:Lvsi
  */
 (function () {
@@ -472,6 +473,49 @@
         constContainer: constContainer,
 
         globalVariableContainer: globalVariableContainer,
+
+        // 对象的属性是否还是对象(供遍历对象使用)
+        propertyIsObj(obj) {
+
+            return $.isPlainObject(obj);
+        },
+
+        // 对象遍历
+        traverseObj(obj, callback) {
+
+            if (!tool.propertyIsObj(obj)) {
+
+                return;
+            }
+
+            let properties = Object.getOwnPropertyNames(obj);
+
+            for (let property of properties) {
+
+
+                if (Array.isArray(obj[property])) {
+
+                    for (let item of obj[property]) {
+
+                        tool.traverseObj(item, callback);
+                    }
+
+                } else if (tool.propertyIsObj(obj[property])) {
+
+                    tool.traverseObj(obj[property], callback);
+                } else {
+
+                    // console.log("property : " + property + " , value : " + obj[property]);
+                    callback(obj, property);
+                }
+            }
+        },
+
+        // 创建连续的字符串
+        makeContinuousStr(str, n) {
+
+            return new Array(n + 1).join(str);
+        },
 
         // 创建错误对象
         makeErrorObj(index = 0, msg = "", code = 0, extra = {}) {
@@ -1399,7 +1443,7 @@
             });
         },
 
-        SQLCompilerDebug: {
+        SQLCompilerAPI: {
 
             // 自动化测试
             testing(sql = "") {
@@ -1440,11 +1484,21 @@
                 compiler.syntacticAnalysis.makeASTOutlinePruning();
                 debugMsg(this.steps.syntacticAnalysis.getASTOutlinePruned());
 
+                debugMsg("Transforming AST Outline ... Results are as follows", debugColor.info);
+                compiler.syntacticAnalysis.makeASTOutlineTransforming();
+                debugMsg(this.steps.syntacticAnalysis.getASTOutlineTransformed());
+
+                debugMsg("Optimizing AST Outline ... Results are as follows", debugColor.info);
+                compiler.syntacticAnalysis.optimizeAST();
+                debugMsg(this.steps.syntacticAnalysis.getAST());
 
                 debugMsg("End Syntactic Analysis\n\n", debugColor.success);
 
-
                 console.timeEnd("runtime");
+
+
+                debugMsg("Beauty SQL ...", debugColor.loading);
+                this.beautySQL(this.steps.syntacticAnalysis.getAST());
             },
 
             // 单步, 获取每步的执行情况
@@ -1484,8 +1538,73 @@
 
                         return globalVariableContainer.ast_outline_pruned;
                     },
+
+                    getASTOutlineTransformed() {
+
+                        return globalVariableContainer.ast_outline_transformed;
+                    },
+
+                    getAST() {
+
+                        return globalVariableContainer.ast;
+                    },
                 }
             },
+
+            // SQL美化: 通过 AST 树的属性(或者token表的属性, 反正就是需要借助这2个工具, 在特定的字符前加回车, 在特定字符前加N个空白格)实现
+            beautySQL(obj) {
+
+                let indent = 0; // 记录当前的缩进
+
+                let sql = "";
+
+                function traverseObj(obj) {
+
+                    if (!tool.propertyIsObj(obj)) {
+
+                        return;
+                    }
+
+                    let properties = Object.getOwnPropertyNames(obj);
+
+                    for (let property of properties) {
+
+
+                        if (Array.isArray(obj[property])) {
+
+                            if ("subquery" === property) {
+
+                                console.log("(");
+                            }
+
+                            for (let item of obj[property]) {
+
+                                traverseObj(item);
+                            }
+
+                            if ("subquery" === property) {
+
+                                console.log(")");
+                            }
+
+                        } else if (tool.propertyIsObj(obj[property])) {
+
+                            traverseObj(obj[property]);
+                        } else {
+
+                            if ("subquery" === property) {
+
+                                console.log("(");
+                            } else if ("value" === property) {
+
+                                console.log(obj[property]);
+                            }
+                        }
+                    }
+                }
+
+                traverseObj(obj);
+            }
         },
     });
 
