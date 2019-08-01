@@ -482,6 +482,19 @@
 
         globalVariableContainer: globalVariableContainer,
 
+        // 根据属性把一个数组转成一个新数组
+        arrayToNewArrayByProperty(arr, property) {
+
+            let new_array = [];
+
+            for (let item of arr) {
+
+                new_array.push(item[property]);
+            }
+
+            return new_array;
+        },
+
         // 对象的属性是否还是对象(供遍历对象使用)
         propertyIsObj(obj) {
 
@@ -861,9 +874,13 @@
                     }
                 },
 
-                understandColumnList(columns) {
+                understandColumnList(columns, orderby = false) {
 
                     let length = columns.length;
+                    if (length < 1) {
+
+                        throw tool.makeErrorObj(false, "column must be not empty");
+                    }
                     for (let i = 0; i <= length - 1; ++i) {
 
                         let pre_pre_pre_column = columns[i - 3];
@@ -871,7 +888,10 @@
                         let pre_column = columns[i - 1];
                         let column = columns[i];
 
-                        if ("object operator" === column.variant) {
+                        if (orderby && "sort" === column.variant) {
+
+                            continue;
+                        } else if ("object operator" === column.variant) {
 
                             // 如果上一个字段是普通列
                             if (pre_column && "column" === pre_column.variant) {
@@ -894,6 +914,11 @@
                     }
 
                     // 使用正则验证一下
+                    let reg = orderby ? new RegExp(/^\s*column(\s*(sort)*\s*recursive\s*column)*$/) : new RegExp(/^\s*column(\s*recursive\s*column)*$/);
+                    if (!reg.test(tool.arrayToNewArrayByProperty(columns, "variant").join(" "))) {
+
+                        throw tool.makeErrorObj(columns[0].index, "column error");
+                    }
                 },
 
                 understandWhereExprList(items) {
@@ -960,7 +985,8 @@
 
                 understandOrderByExprList(first) {
 
-                    tool.pruningAST.sensing.understandColumnList(first);
+                    console.log(first);
+                    tool.pruningAST.sensing.understandColumnList(first, true);
                 },
 
                 understandGroupByExprList(first) {
