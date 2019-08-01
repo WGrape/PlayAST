@@ -558,7 +558,13 @@
         // 过滤数组空元素
         trimArray(arr) {
 
-            return arr.filter((item) => item.length > 0 && item.trim() !== "");
+            arr = arr.filter((item) => item.length > 0 && item.trim() !== "");
+
+            return arr.map((item) => {
+
+                // 处理的特殊字符(如换行符号)
+                return item.replace(/[\r\n]/g, "");
+            });
         },
 
         // 对象转数组
@@ -1201,6 +1207,9 @@
                             sql += ";";
                         }
 
+                        // 把 SQL 中的换行符全部替代成空格
+                        sql = sql.replace(/[\r\n]/g, " ").trim();
+
                         // 对SQL中的目标字符两侧添加空白符
                         let breakpoint_obj = constContainer.referenceTable.symbolTable;
                         delete breakpoint_obj['*']; // delete breakpoint_arr['.'];
@@ -1626,8 +1635,8 @@
                 traverseObj(obj);
 
                 return {
-                    sql:sql,
-                    enters:enters,
+                    sql: sql,
+                    enters: enters,
                 };
             }
         },
