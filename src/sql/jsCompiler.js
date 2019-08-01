@@ -1162,7 +1162,7 @@
                 } catch (e) {
 
                     // 解析失败
-                    console.error( "Error Near " + e.index + " , " + e.msg ); // alert("解析失败 : " + e.message);
+                    console.error("Error Near " + e.index + " , " + e.msg); // alert("解析失败 : " + e.message);
                 }
 
                 // OK ! Sql passed the check !
@@ -1498,10 +1498,9 @@
 
 
                 debugMsg("Beauty SQL ...", debugColor.loading);
-                sql = this.beautySQL(this.steps.syntacticAnalysis.getAST());
-                console.log(sql);
-
-                return sql;
+                let sql_beauty = this.beautySQL(this.steps.syntacticAnalysis.getAST());
+                console.log(sql_beauty.sql);
+                return sql_beauty;
             },
 
             // 单步, 获取每步的执行情况
@@ -1563,6 +1562,7 @@
                 let whitespace = true;
                 let last_char = "";
                 let indent = 0; // 记录当前的缩进
+                let enters = 1; // 记录当前的行数
                 let sql = "";
 
                 function traverseObj(obj) {
@@ -1581,7 +1581,8 @@
 
                             if ("subquery" === property) {
 
-                                sql = sql + "\n" + tool.makeContinuousStr(indent) + "(" + "\n";
+                                ++enters;
+                                sql = sql + "\n" + tool.makeContinuousStr(indent) + "(";
                                 indent += 4;
                             }
 
@@ -1592,8 +1593,9 @@
 
                             if ("subquery" === property) {
 
+                                ++enters;
                                 indent -= 4;
-                                sql = sql + "\n" + tool.makeContinuousStr(indent) + ")" + "\n";
+                                sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
                             }
 
                         } else if (tool.propertyIsObj(obj[property])) {
@@ -1607,19 +1609,12 @@
 
                                 if (enter_indent_arr.indexOf(obj['type']) > -1) {
 
-                                    sql = sql + "\n" + tool.makeContinuousStr(indent) + obj[property];
+
+                                    enters = (sql !== "") ? (++enters) : enters;
+                                    sql = sql + (sql === "" ? "" : "\n") + tool.makeContinuousStr(indent) + obj[property];
                                 } else {
 
-                                    if ("." === obj['value']) {
-
-                                        whitespace = false;
-                                    } else if ("." !== last_char) {
-
-                                        whitespace = true;
-                                    } else {
-
-                                        whitespace = false;
-                                    }
+                                    whitespace = ("." !== last_char);
 
                                     sql = sql + (whitespace ? " " : "") + obj[property];
                                 }
@@ -1630,7 +1625,10 @@
 
                 traverseObj(obj);
 
-                return sql;
+                return {
+                    sql:sql,
+                    enters:enters,
+                };
             }
         },
     });

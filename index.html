@@ -114,8 +114,10 @@ FROM
 
         sql_review_obj.text(sql);
 
-        sql = sql_review_obj.SQLCompilerAPI.testing(sql);
-        sql_input_obj.val(sql);
+        let enter_px = 25; // 即1个换行符代表几个px像素
+        let sql_beauty = sql_review_obj.SQLCompilerAPI.testing(sql);
+        sql_input_obj.val(sql_beauty.sql);
+        sql_input_obj.css("height", enter_px * sql_beauty.enters); // 自适应高度
     });
 
 </script>
