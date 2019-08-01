@@ -114,7 +114,8 @@ FROM
 
         sql_review_obj.text(sql);
 
-        sql_review_obj.SQLCompilerAPI.testing(sql);
+        sql = sql_review_obj.SQLCompilerAPI.testing(sql);
+        sql_input_obj.val(sql);
     });
 
 </script>

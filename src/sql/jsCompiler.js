@@ -512,7 +512,7 @@
         },
 
         // 创建连续的字符串
-        makeContinuousStr(str, n) {
+        makeContinuousStr(n, str = " ") {
 
             return new Array(n + 1).join(str);
         },
@@ -1162,7 +1162,7 @@
                 } catch (e) {
 
                     // 解析失败
-                    throw "Error Near " + e.index + " , " + e.msg; // alert("解析失败 : " + e.message);
+                    console.error( "Error Near " + e.index + " , " + e.msg ); // alert("解析失败 : " + e.message);
                 }
 
                 // OK ! Sql passed the check !
@@ -1498,7 +1498,10 @@
 
 
                 debugMsg("Beauty SQL ...", debugColor.loading);
-                this.beautySQL(this.steps.syntacticAnalysis.getAST());
+                sql = this.beautySQL(this.steps.syntacticAnalysis.getAST());
+                console.log(sql);
+
+                return sql;
             },
 
             // 单步, 获取每步的执行情况
@@ -1554,8 +1557,12 @@
             // SQL美化: 通过 AST 树的属性(或者token表的属性, 反正就是需要借助这2个工具, 在特定的字符前加回车, 在特定字符前加N个空白格)实现
             beautySQL(obj) {
 
-                let indent = 0; // 记录当前的缩进
+                // 如果 ast 的type 是下面的, 则换行且缩进
+                let enter_indent_arr = ["statement", "clause", "predicate"];
 
+                let whitespace = true;
+                let last_char = "";
+                let indent = 0; // 记录当前的缩进
                 let sql = "";
 
                 function traverseObj(obj) {
@@ -1574,7 +1581,8 @@
 
                             if ("subquery" === property) {
 
-                                console.log("(");
+                                sql = sql + "\n" + tool.makeContinuousStr(indent) + "(" + "\n";
+                                indent += 4;
                             }
 
                             for (let item of obj[property]) {
@@ -1584,7 +1592,8 @@
 
                             if ("subquery" === property) {
 
-                                console.log(")");
+                                indent -= 4;
+                                sql = sql + "\n" + tool.makeContinuousStr(indent) + ")" + "\n";
                             }
 
                         } else if (tool.propertyIsObj(obj[property])) {
@@ -1592,18 +1601,36 @@
                             traverseObj(obj[property]);
                         } else {
 
-                            if ("subquery" === property) {
+                            if ("value" === property) {
 
-                                console.log("(");
-                            } else if ("value" === property) {
+                                last_char = obj[property];
 
-                                console.log(obj[property]);
+                                if (enter_indent_arr.indexOf(obj['type']) > -1) {
+
+                                    sql = sql + "\n" + tool.makeContinuousStr(indent) + obj[property];
+                                } else {
+
+                                    if ("." === obj['value']) {
+
+                                        whitespace = false;
+                                    } else if ("." !== last_char) {
+
+                                        whitespace = true;
+                                    } else {
+
+                                        whitespace = false;
+                                    }
+
+                                    sql = sql + (whitespace ? " " : "") + obj[property];
+                                }
                             }
                         }
                     }
                 }
 
                 traverseObj(obj);
+
+                return sql;
             }
         },
     });
