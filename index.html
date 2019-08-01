@@ -112,6 +112,14 @@ limit 0 , 32
     let sql_input_obj = $("#SQL_Input");
     let json_renderer_obj = $("#JSON_Renderer");
 
+    function beautySQL() {
+
+        let enter_px = 25; // 即1个换行符代表几个px像素
+        let sql_beauty = sql_review_obj.SQLCompilerAPI.beautySQL();
+        sql_input_obj.val(sql_beauty.sql);
+        sql_input_obj.css("height", enter_px * sql_beauty.enters); // 自适应高度
+    }
+
     $(document).on("click", "#Go", function () {
 
         let sql = sql_input_obj.val();
@@ -124,6 +132,8 @@ limit 0 , 32
         let input = eval('(' + JSON.stringify(result) + ')');
 
         json_renderer_obj.jsonViewer(input, {collapsed: false, withQuotes: false});
+
+        beautySQL();
     });
 
     $(document).on("click", "#Debug", function () {
@@ -132,10 +142,7 @@ limit 0 , 32
 
         sql_review_obj.text(sql);
 
-        let enter_px = 25; // 即1个换行符代表几个px像素
-        let sql_beauty = sql_review_obj.SQLCompilerAPI.testing(sql);
-        sql_input_obj.val(sql_beauty.sql);
-        sql_input_obj.css("height", enter_px * sql_beauty.enters); // 自适应高度
+        beautySQL();
     });
 
 </script>

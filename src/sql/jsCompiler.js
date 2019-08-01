@@ -1514,7 +1514,7 @@
 
 
                 debugMsg("Beauty SQL ...", debugColor.loading);
-                let sql_beauty = this.beautySQL(this.steps.syntacticAnalysis.getAST());
+                let sql_beauty = this.beautySQL();
                 console.log(sql_beauty.sql);
                 return sql_beauty;
             },
@@ -1570,7 +1570,9 @@
             },
 
             // SQL美化: 通过 AST 树的属性(或者token表的属性, 反正就是需要借助这2个工具, 在特定的字符前加回车, 在特定字符前加N个空白格)实现
-            beautySQL(obj) {
+            beautySQL() {
+
+                let obj = this.steps.syntacticAnalysis.getAST();
 
                 // 如果 ast 的type 是下面的, 则换行且缩进
                 let enter_indent_arr = ["statement", "clause", "predicate", "function"];
