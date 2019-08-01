@@ -1094,7 +1094,7 @@
                         // 如果出现子查询, 则全部都加到query中
                         if ("function" === ast_outline[i].variant) {
 
-                            let node_function = {type: "function", function: []};
+                            let node_function = {type: "function", function: [], function_name: ast_outline[i].value};
 
                             // 未遇到 ) 括号前, 把遇到的参数都塞进去
                             "left_bracket" === ast_outline[i + 1].variant && delete ast_outline[i + 1]; // 把左括号删掉
@@ -1573,7 +1573,7 @@
             beautySQL(obj) {
 
                 // 如果 ast 的type 是下面的, 则换行且缩进
-                let enter_indent_arr = ["statement", "clause", "predicate"];
+                let enter_indent_arr = ["statement", "clause", "predicate", "function"];
 
                 let whitespace = true;
                 let last_char = "";
@@ -1600,6 +1600,9 @@
                                 ++enters;
                                 sql = sql + "\n" + tool.makeContinuousStr(indent) + "(";
                                 indent += 4;
+                            } else if ("function" === property) {
+
+                                sql = sql + " " + obj['function_name'] + "(";
                             }
 
                             for (let item of obj[property]) {
@@ -1612,6 +1615,9 @@
                                 ++enters;
                                 indent -= 4;
                                 sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
+                            } else if ("function" === property) {
+
+                                sql = sql + ")";
                             }
 
                         } else if (tool.propertyIsObj(obj[property])) {
