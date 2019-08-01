@@ -1023,6 +1023,12 @@
                             let j = i;
                             while (j <= length - 1 && "close" !== ast_outline[j].variant && ("function" === ast_outline[j].type || "expression" === ast_outline[j].type)) {
 
+                                if ("limit" === pre_node.value && ["Numeric", "Punctuator"].indexOf(ast_outline[j].token) < 0 && "," !== ast_outline[j].value) {
+
+                                    ++j;
+                                    continue;
+                                }
+
                                 node_grouping.grouping.push(ast_outline[j]);
                                 delete ast_outline[j];
                                 ++j;
@@ -1064,13 +1070,13 @@
                                 if (ast_outline[i].index !== ast_outline[j].matched_bracket_index) {
 
                                     node_subquery.subquery.push(ast_outline[j]);
-                                }
+                                    delete ast_outline[j];
+                                } else {
 
-                                delete ast_outline[j];
+                                    break;
+                                }
                             }
                             ast_outline[i] = node_subquery;
-
-                            break; // Todo:是否需要跳出
                         }
                     }
                 },
@@ -1614,8 +1620,6 @@
 
                             if ("value" === property) {
 
-                                last_char = obj[property];
-
                                 if (enter_indent_arr.indexOf(obj['type']) > -1) {
 
 
@@ -1623,9 +1627,9 @@
                                     sql = sql + (sql === "" ? "" : "\n") + tool.makeContinuousStr(indent) + obj[property];
                                 } else {
 
-                                    whitespace = ("." !== last_char);
-
+                                    whitespace = !("." === obj['value'] || "." === last_char);
                                     sql = sql + (whitespace ? " " : "") + obj[property];
+                                    last_char = obj[property];
                                 }
                             }
                         }
