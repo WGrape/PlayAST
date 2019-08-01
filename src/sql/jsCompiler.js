@@ -1073,6 +1073,7 @@
                                     delete ast_outline[j];
                                 } else {
 
+                                    delete ast_outline[j];
                                     break;
                                 }
                             }
