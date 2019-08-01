@@ -5,7 +5,7 @@
  * 3. 只支持3个子查询(即3个select)
  * 4. 对 ` 字符的处理
  * 5. 不怕输入任何的括号, 因为在词法分析阶段, 就会把那些不必要的括号都删除掉, 只留下必要的括号, 这样也方便后续处理。
- * 6. 子查询 和 values 都对括号做了删除处理(这里设计还待确定)
+ * 6. NULL 的处理
  * Author:Lvsi
  */
 (function () {
@@ -948,6 +948,9 @@
                         } else if (pre_column && "Identifier" === pre_column.token && pre_pre_column && "object operator" === pre_pre_column.variant && "on" === column.value) {
 
                             pre_column.variant = "column";
+                        } else if ("Identifier" === column.token && next_column && "Identifier" === next_column.token) {
+
+                            column.variant = "table";
                         } else {
 
                             "Identifier" === column.token && (column.variant = (next_column && "on" === next_column.value) ? "table" : "column");
