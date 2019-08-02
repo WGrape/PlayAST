@@ -486,12 +486,21 @@
 
             let token_table = globalVariableContainer.tokenTable, msg = "ERRNO " + e.index + " near : ";
 
-            for (let i = e.index - 3; i <= e.index; ++i) {
+            if (e.index < 3) {
 
-                msg = msg + token_table[i].value + " ";
+                for (let i = 0; i <= (e.index + 3) && token_table[i]; ++i) {
+
+                    msg = msg + token_table[i].value + " ";
+                }
+            } else {
+
+                for (let i = e.index - 3; i <= e.index; ++i) {
+
+                    msg = msg + token_table[i].value + " ";
+                }
             }
 
-            msg = msg + ", " + e.msg;
+            msg = msg + "(" + e.msg + ")";
 
             // 解析失败
             console.error(msg); // alert("解析失败 : " + e.message);
@@ -1071,6 +1080,15 @@
                     }
 
                     // 使用正则验证一下
+                    // /^(((database)(object operator)(table)(table)|(database)(object operator)(table)|(table)(table)|table)(|recursive))+$/
+                    // /^\s*(((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*(| recursive))+)\s*$/
+                    // /^\s*((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)+)\s*$/
+                    // /^\s*(((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)+)|(((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)recursive)+))\s*$/
+                    let reg = new RegExp(/^\s*(((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*(| recursive))+)\s*$/);
+                    if (!reg.test(tool.arrayToNewArrayByProperty(tables, "variant").join(" "))) {
+
+                        //throw tool.makeErrorObj(tables[0].index, "table error");
+                    }
                 },
 
                 understandLimitExprList(numbers) {
@@ -1089,6 +1107,13 @@
 
                             throw tool.makeErrorObj(number.index);
                         }
+                    }
+
+                    // 使用正则验证一下
+                    let reg = new RegExp(/^\s*Numeric(|\srecursive\sNumeric)$/);
+                    if (!reg.test(tool.arrayToNewArrayByProperty(numbers, "variant").join(" "))) {
+
+                        throw tool.makeErrorObj(numbers[0].index, "limit error");
                     }
                 },
             },
