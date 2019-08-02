@@ -482,6 +482,21 @@
 
         globalVariableContainer: globalVariableContainer,
 
+        errorHandle(e) {
+
+            let token_table = globalVariableContainer.tokenTable, msg = "ERRNO " + e.index + " near : ";
+
+            for (let i = e.index - 3; i <= e.index; ++i) {
+
+                msg = msg + token_table[i].value + " ";
+            }
+
+            msg = msg + ", " + e.msg;
+
+            // 解析失败
+            console.error(msg); // alert("解析失败 : " + e.message);
+        },
+
         // 根据属性把一个数组转成一个新数组
         arrayToNewArrayByProperty(arr, property) {
 
@@ -914,7 +929,7 @@
                     }
 
                     // 使用正则验证一下
-                    let reg = orderby ? new RegExp(/^\s*column(\s*(sort)*\s*recursive\s*column)*$/) : new RegExp(/^\s*column(\s*recursive\s*column)*$/);
+                    let reg = orderby ? new RegExp(/^\s*column(\s*|recursive\s*column)(sort)*$/) : new RegExp(/^\s*column(\s*|recursive\s*column)*$/);
                     if (!reg.test(tool.arrayToNewArrayByProperty(columns, "variant").join(" "))) {
 
                         throw tool.makeErrorObj(columns[0].index, "column error");
@@ -985,7 +1000,6 @@
 
                 understandOrderByExprList(first) {
 
-                    console.log(first);
                     tool.pruningAST.sensing.understandColumnList(first, true);
                 },
 
@@ -1251,8 +1265,7 @@
 
                 } catch (e) {
 
-                    // 解析失败
-                    console.error("Error Near " + e.index + " , " + e.msg); // alert("解析失败 : " + e.message);
+                    tool.errorHandle(e);
                 }
 
                 // OK ! Sql passed the check !
@@ -1557,53 +1570,60 @@
 
                 console.time("runtime");
 
-                // 词法分析
-                debugMsg("Lexical Analysis ...", debugColor.loading);
-                debugMsg("Clear SQL ... Results are as follows", debugColor.info);
-                compiler.lexicalAnalysis.clear();
-                debugMsg(this.steps.lexicalAnalysis.getSQLCleared());
+                try {
 
-                debugMsg("Demarcate SQL ... Results are as follows", debugColor.info);
-                compiler.lexicalAnalysis.demarcate();
-                debugMsg(this.steps.lexicalAnalysis.getSQLDemarcated());
+                    // 词法分析
+                    debugMsg("Lexical Analysis ...", debugColor.loading);
+                    debugMsg("Clear SQL ... Results are as follows", debugColor.info);
+                    compiler.lexicalAnalysis.clear();
+                    debugMsg(this.steps.lexicalAnalysis.getSQLCleared());
 
-                debugMsg("Create Token Table ... Results are as follows", debugColor.info);
-                compiler.lexicalAnalysis.createTokenTable();
-                debugMsg(this.steps.lexicalAnalysis.getTokenTable());
+                    debugMsg("Demarcate SQL ... Results are as follows", debugColor.info);
+                    compiler.lexicalAnalysis.demarcate();
+                    debugMsg(this.steps.lexicalAnalysis.getSQLDemarcated());
 
-                debugMsg("End Lexical Analysis\n\n", debugColor.success);
+                    debugMsg("Create Token Table ... Results are as follows", debugColor.info);
+                    compiler.lexicalAnalysis.createTokenTable();
+                    debugMsg(this.steps.lexicalAnalysis.getTokenTable());
 
-                // 语法分析
-                debugMsg("Syntactic Analysis ...", debugColor.loading);
-                debugMsg("Decide Statement ... Results are as follows", debugColor.info);
-                compiler.syntacticAnalysis.decideStatement();
-                debugMsg(this.steps.syntacticAnalysis.getStatementType());
+                    debugMsg("End Lexical Analysis\n\n", debugColor.success);
 
-                debugMsg("Create AST Outline ... Results are as follows", debugColor.info);
-                compiler.syntacticAnalysis.createASTOutline();
-                debugMsg(this.steps.syntacticAnalysis.getASTOutline());
+                    // 语法分析
+                    debugMsg("Syntactic Analysis ...", debugColor.loading);
+                    debugMsg("Decide Statement ... Results are as follows", debugColor.info);
+                    compiler.syntacticAnalysis.decideStatement();
+                    debugMsg(this.steps.syntacticAnalysis.getStatementType());
 
-                debugMsg("Pruning AST Outline ... Results are as follows", debugColor.info);
-                compiler.syntacticAnalysis.makeASTOutlinePruning();
-                debugMsg(this.steps.syntacticAnalysis.getASTOutlinePruned());
+                    debugMsg("Create AST Outline ... Results are as follows", debugColor.info);
+                    compiler.syntacticAnalysis.createASTOutline();
+                    debugMsg(this.steps.syntacticAnalysis.getASTOutline());
 
-                debugMsg("Transforming AST Outline ... Results are as follows", debugColor.info);
-                compiler.syntacticAnalysis.makeASTOutlineTransforming();
-                debugMsg(this.steps.syntacticAnalysis.getASTOutlineTransformed());
+                    debugMsg("Pruning AST Outline ... Results are as follows", debugColor.info);
+                    compiler.syntacticAnalysis.makeASTOutlinePruning();
+                    debugMsg(this.steps.syntacticAnalysis.getASTOutlinePruned());
 
-                debugMsg("Optimizing AST ... Results are as follows", debugColor.info);
-                compiler.syntacticAnalysis.optimizeAST();
-                debugMsg(this.steps.syntacticAnalysis.getAST());
+                    debugMsg("Transforming AST Outline ... Results are as follows", debugColor.info);
+                    compiler.syntacticAnalysis.makeASTOutlineTransforming();
+                    debugMsg(this.steps.syntacticAnalysis.getASTOutlineTransformed());
 
-                debugMsg("End Syntactic Analysis\n\n", debugColor.success);
+                    debugMsg("Optimizing AST ... Results are as follows", debugColor.info);
+                    compiler.syntacticAnalysis.optimizeAST();
+                    debugMsg(this.steps.syntacticAnalysis.getAST());
 
-                console.timeEnd("runtime");
+                    debugMsg("End Syntactic Analysis\n\n", debugColor.success);
 
+                    console.timeEnd("runtime");
 
-                debugMsg("Beauty SQL ...", debugColor.loading);
-                let sql_beauty = this.beautySQL();
-                console.log(sql_beauty.sql);
-                return sql_beauty;
+                    debugMsg("Beauty SQL ...", debugColor.loading);
+                    let sql_beauty = this.beautySQL();
+                    console.log(sql_beauty.sql);
+                    return sql_beauty;
+
+                } catch (e) {
+
+                    tool.errorHandle(e);
+                }
+
             },
 
             // 单步, 获取每步的执行情况
