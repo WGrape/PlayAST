@@ -922,52 +922,80 @@
                             continue;
                         } else if ("values" === node['for']) {
 
-                            // insert into t values (xx,xxx) 第一个和最后一个是括号, 所以slice
-                            let values = node['grouping'].slice(1, node['grouping'].length - 1);
-                            grouping_for_map[node['for']] && grouping_for_map[node['for']](values);
+                            this.sensingGroupingSpeciallyForValues(node);
                             continue;
                         } else if ("insert" === node['for']) {
 
-                            node = node.grouping;
-
-                            // understand tables & understand columns
-
-                            // 从当前到第一个左括号之前的都是待 understand tables
-                            let tables = [];
-                            for (let table of node) {
-
-                                if ("(" === table.value) {
-
-                                    break;
-                                }
-                                tables.push(table);
-                            }
-                            tool.pruningAST.sensing.understandTableList(tables);
-
-                            // 从第一个左括号(不包括)到第1个右括号的都是待 understand columns
-                            let is_target = false;
-                            let columns = [];
-                            for (let column of node) {
-
-                                if ("(" === column.value) {
-
-                                    is_target = true;
-                                    continue;
-                                } else if (")" === column.value) {
-
-                                    is_target = false;
-                                    break;
-                                }
-
-                                is_target && columns.push(column);
-                            }
-                            tool.pruningAST.sensing.understandColumnList(columns);
-
+                            this.sensingGroupingSpeciallyForInsert(node);
                             continue;
                         }
 
                         grouping_for_map[node['for']] && grouping_for_map[node['for']](node['grouping']);
                     }
+                },
+
+                sensingGroupingSpeciallyForValues(node) {
+
+                    node = node.grouping;
+
+                    // 从第一个左括号(不包括)到第1个右括号的都是待 understand values
+                    let is_target = false;
+                    let values = [];
+                    for (let column of node) {
+
+                        if ("(" === column.value) {
+
+                            is_target = true;
+                            continue;
+                        } else if (")" === column.value) {
+
+                            is_target = false;
+                            break;
+                        }
+
+                        is_target && values.push(column);
+                    }
+
+                    tool.pruningAST.sensing.understandValueList(values);
+                },
+
+                sensingGroupingSpeciallyForInsert(node) {
+
+                    node = node.grouping;
+
+                    // understand tables & understand columns
+
+                    // 从当前到第一个左括号之前的都是待 understand tables
+                    let tables = [];
+                    for (let table of node) {
+
+                        if ("(" === table.value) {
+
+                            break;
+                        }
+                        tables.push(table);
+                    }
+                    tool.pruningAST.sensing.understandTableList(tables);
+
+                    // 从第一个左括号(不包括)到第1个右括号的都是待 understand columns
+                    let is_target = false;
+                    let columns = [];
+                    for (let column of node) {
+
+                        if ("(" === column.value) {
+
+                            is_target = true;
+                            continue;
+                        } else if (")" === column.value) {
+
+                            is_target = false;
+                            break;
+                        }
+
+                        is_target && columns.push(column);
+                    }
+
+                    tool.pruningAST.sensing.understandColumnList(columns);
                 },
 
                 understandColumnList(columns, orderby = false) {
@@ -1010,15 +1038,8 @@
                     }
 
                     // 使用正则验证一下
-                    let reg = null;
-                    if (orderby) {
-
-                        reg = /^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)+$/g;
-                    } else {
-
-                        reg = /^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)+$/g;
-                    }
-                    if (!reg.test(tool.arrayToNewArrayByProperty(columns, "variant").join(" "))) {
+                    let reg = /^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)+$/g;
+                    if (false === orderby && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant").join(" "))) {
 
                         throw tool.makeErrorObj(columns[0].index, "column error");
                     }
@@ -1047,6 +1068,7 @@
                             "Identifier" === item.token && (item.variant = "left");
                         }
                     }
+
                 },
 
                 understandJoinExprList(columns) {
@@ -1089,11 +1111,26 @@
                 understandOrderByExprList(first) {
 
                     tool.pruningAST.sensing.understandColumnList(first, true);
+
+                    // 使用正则验证一下
+                    let reg = /^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)+$/g;
+
+                    if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
+
+                        throw tool.makeErrorObj(first[0].index, "order by column error");
+                    }
                 },
 
                 understandGroupByExprList(first) {
 
                     tool.pruningAST.sensing.understandColumnList(first);
+
+                    // 使用正则验证一下
+                    let reg = new RegExp(/^\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*$/g);
+                    if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
+
+                        throw tool.makeErrorObj(first[0].index, "group by error");
+                    }
                 },
 
                 understandValueList(values) {
@@ -1148,7 +1185,6 @@
                     // 使用正则验证一下
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*)(|recursive\s*(database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*)+$/g);
                     let str = tool.arrayToNewArrayByProperty(tables, "variant").join(" ");
-                    console.log(str);
                     if (!reg.test(str)) {
 
                         throw tool.makeErrorObj(tables[0].index, "table error");
