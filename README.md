@@ -33,7 +33,7 @@ PlayAST : Play With Abstract Syntax Tree
 
 <br>
 
-<img src="./extra/images/demo-sql-js-2.gif">
+<img src="./extra/images/demo-sql-js-2.gif" style="width:700px;">
 
 ## 参考
 [详见资料学习参考](./extra/docs/reference.md)

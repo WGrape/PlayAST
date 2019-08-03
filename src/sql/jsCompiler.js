@@ -1063,12 +1063,21 @@
                         } else if (pre_item && "function" !== pre_item.type && "recursive" === item.variant) {
 
                             pre_item.variant = "right";
+                        } else if (length - 1 === i) {
+
+                            item.variant = "right";
                         } else {
 
-                            "Identifier" === item.token && (item.variant = "left");
+                            ("Identifier" === item.token || "object operator" === item.variant) && (item.variant = "left");
                         }
                     }
 
+                    // 使用正则验证一下
+                    let reg = /^((\s*left)+\s*operator\s*right\s*)(\s*recursive\s*(\s*left)+\s*operator\s*right\s*)*$/;
+                    if (!reg.test(tool.arrayToNewArrayByProperty(items, "variant").join(" "))) {
+
+                        throw tool.makeErrorObj(items[0].index, "where error");
+                    }
                 },
 
                 understandJoinExprList(columns) {
