@@ -7,7 +7,8 @@ PlayAST : Play With Abstract Syntax Tree
 ## 原理
 编译原理课程中，一个编译器主要内部处理分为 [词法分析](https://zh.wikipedia.org/wiki/%E8%AF%8D%E6%B3%95%E5%88%86%E6%9E%90) , [语法分析](https://zh.wikipedia.org/zh-hans/%E8%AA%9E%E6%B3%95%E5%88%86%E6%9E%90%E5%99%A8) 和 [语义分析](https://en.wikipedia.org/wiki/Semantic_analysis)。在编译的过程中，会生成中间代码，语法树(AST)就是其中的一种形式。以下为主要原理图：
 <br><br>
-<img src="./extra/images/introduce.png">
+
+<img src="./extra/images/introduce.png" style="width:700px;">
 
 ## 作用
 通过AST可以对任何具有语法的语句实现任何解析，从而达到处理目标。其常见作用如下：
