@@ -9,6 +9,9 @@ PlayAST : Play With Abstract Syntax Tree
 <br><br>
 <img src="./extra/images/introduce.png">
 
+## 目标
+通过AST可以实现
+
 ## 实现
 
 #### SQL AST

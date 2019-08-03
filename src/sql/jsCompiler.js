@@ -634,50 +634,84 @@
         },
 
         // 获取第N个左括号的下标(从右向左)
-        getLastNthLeftBracketASTIndex(n) {
+        getLastNthLeftBracketASTIndex(n, fromleft = false) {
 
             let ast_outline = globalVariableContainer.ast_outline.children;
             let length = ast_outline.length;
             let times = 0;
 
-            for (let i = length - 1; i >= 0; --i) {
+            if (fromleft) {
 
-                if ("(" === ast_outline[i].value) {
+                for (let i = 0; i <= length - 1; ++i) {
 
-                    ++times;
+                    if ("(" === ast_outline[i].value) {
 
-                    if (times === n) {
+                        ++times;
 
-                        return i;
+                        if (times === n) {
+
+                            return i;
+                        }
+                    }
+                }
+
+            } else {
+
+                for (let i = length - 1; i >= 0; --i) {
+
+                    if ("(" === ast_outline[i].value) {
+
+                        ++times;
+
+                        if (times === n) {
+
+                            return i;
+                        }
                     }
                 }
             }
 
-            throw tool.makeErrorObj(false, "Not match left bracket");
+            throw tool.makeErrorObj(false, "Not " + n + "th match left bracket");
         },
 
         // 获取最后第N个右括号的下标(从右向左)
-        getLastNthRightBracketASTIndex(n) {
+        getLastNthRightBracketASTIndex(n, fromleft = false) {
 
             let ast_outline = globalVariableContainer.ast_outline.children;
             let length = ast_outline.length;
-
             let times = 0;
 
-            for (let i = length - 1; i >= 0; --i) {
+            if (fromleft) {
 
-                if (")" === ast_outline[i].value) {
+                for (let i = 0; i <= length - 1; ++i) {
 
-                    ++times;
+                    if (")" === ast_outline[i].value) {
 
-                    if (times === n) {
+                        ++times;
 
-                        return i;
+                        if (times === n) {
+
+                            return i;
+                        }
+                    }
+                }
+            } else {
+
+                for (let i = length - 1; i >= 0; --i) {
+
+                    if (")" === ast_outline[i].value) {
+
+                        ++times;
+
+                        if (times === n) {
+
+                            return i;
+                        }
                     }
                 }
             }
 
-            throw tool.makeErrorObj(false, "Not match right bracket");
+            throw tool.makeErrorObj(false, "Not " + n + "th match right bracket");
         },
 
         // 获取子查询个数
@@ -888,9 +922,47 @@
                             continue;
                         } else if ("values" === node['for']) {
 
-                            // 第一个和最后一个是括号, 所以slice
+                            // insert into t values (xx,xxx) 第一个和最后一个是括号, 所以slice
                             let values = node['grouping'].slice(1, node['grouping'].length - 1);
                             grouping_for_map[node['for']] && grouping_for_map[node['for']](values);
+                            continue;
+                        } else if ("insert" === node['for']) {
+
+                            node = node.grouping;
+
+                            // understand tables & understand columns
+
+                            // 从当前到第一个左括号之前的都是待 understand tables
+                            let tables = [];
+                            for (let table of node) {
+
+                                if ("(" === table.value) {
+
+                                    break;
+                                }
+                                tables.push(table);
+                            }
+                            tool.pruningAST.sensing.understandTableList(tables);
+
+                            // 从第一个左括号(不包括)到第1个右括号的都是待 understand columns
+                            let is_target = false;
+                            let columns = [];
+                            for (let column of node) {
+
+                                if ("(" === column.value) {
+
+                                    is_target = true;
+                                    continue;
+                                } else if (")" === column.value) {
+
+                                    is_target = false;
+                                    break;
+                                }
+
+                                is_target && columns.push(column);
+                            }
+                            tool.pruningAST.sensing.understandColumnList(columns);
+
                             continue;
                         }
 
@@ -938,7 +1010,14 @@
                     }
 
                     // 使用正则验证一下
-                    let reg = orderby ? new RegExp(/^\s*column(\s*|recursive\s*column)(sort)*$/) : new RegExp(/^\s*column(\s*|recursive\s*column)*$/);
+                    let reg = null;
+                    if (orderby) {
+
+                        reg = /^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)+$/g;
+                    } else {
+
+                        reg = /^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)+$/g;
+                    }
                     if (!reg.test(tool.arrayToNewArrayByProperty(columns, "variant").join(" "))) {
 
                         throw tool.makeErrorObj(columns[0].index, "column error");
@@ -1034,6 +1113,14 @@
                             throw tool.makeErrorObj(value.index);
                         }
                     }
+
+                    // 正则匹配
+                    let reg = new RegExp(/^\s*(Numeric|String)(|\s*recursive\s*(Numeric|String))+$/);
+                    let str = tool.arrayToNewArrayByProperty(values, "variant").join(" ");
+                    if (!reg.test(str)) {
+
+                        throw tool.makeErrorObj(values[0].index, "values error");
+                    }
                 },
 
                 understandTableList(tables) {
@@ -1044,28 +1131,7 @@
                         let pre_table = tables[i - 1];
                         let table = tables[i];
 
-                        if (1 === i && "insert" === globalVariableContainer.statement_type) {
-
-                            let columns = [];
-
-                            // 把第一个左括号和第1个右括号之间的都选出来(左数)
-                            let right = tool.getLastNthRightBracketASTIndex(2);
-                            for (let j = 2; j <= length - 1; ++j) {
-
-                                if (right === tables[j].index) {
-
-                                    break;
-                                } else {
-
-                                    columns.push(tables[j]);
-                                }
-                            }
-
-                            tool.pruningAST.sensing.understandColumnList(columns);
-
-                            break;
-
-                        } else if ("object operator" === table.variant) {
+                        if ("object operator" === table.variant) {
 
                             if (pre_table && "table" === pre_table.variant) {
 
@@ -1080,14 +1146,12 @@
                     }
 
                     // 使用正则验证一下
-                    // /^(((database)(object operator)(table)(table)|(database)(object operator)(table)|(table)(table)|table)(|recursive))+$/
-                    // /^\s*(((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*(| recursive))+)\s*$/
-                    // /^\s*((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)+)\s*$/
-                    // /^\s*(((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)+)|(((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)recursive)+))\s*$/
-                    let reg = new RegExp(/^\s*(((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*(| recursive))+)\s*$/);
-                    if (!reg.test(tool.arrayToNewArrayByProperty(tables, "variant").join(" "))) {
+                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*)(|recursive\s*(database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*)+$/g);
+                    let str = tool.arrayToNewArrayByProperty(tables, "variant").join(" ");
+                    console.log(str);
+                    if (!reg.test(str)) {
 
-                        //throw tool.makeErrorObj(tables[0].index, "table error");
+                        throw tool.makeErrorObj(tables[0].index, "table error");
                     }
                 },
 
