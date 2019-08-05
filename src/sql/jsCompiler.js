@@ -614,16 +614,18 @@
             return obj;
         },
 
+        // 在特定位置替换字符
+        strReplacePos(text, start, stop, replace_text) {
+
+            return text.substring(0, stop) + replace_text + text.substring(stop + 1);
+        },
+
         // 在期望的字符处插入空白
         insertWhiteSpaceInExceptChars(str, except_chars) {
 
             // function insertStr(source, start, newStr) { return source.slice(0, start) + newStr + source.slice(start) }
-
             // https://blog.csdn.net/weixin_42203183/article/details/84257252
-            function replacePos(text, start, stop, replace_text) {
-
-                return text.substring(0, stop) + replace_text + text.substring(stop + 1);
-            }
+            // function replacePos(text, start, stop, replace_text) { return text.substring(0, stop) + replace_text + text.substring(stop + 1); }
 
             for (let i = 0; str[i];) {
 
@@ -631,7 +633,7 @@
                 let index = except_chars.indexOf(str[i]);
                 if (index >= 0) {
 
-                    str = replacePos(str, i, i, " " + except_chars[index] + " ");
+                    str = this.strReplacePos(str, i, i, " " + except_chars[index] + " ");
                     i = i + 3;
                     continue;
                 }
@@ -1102,7 +1104,7 @@
                             pre_column.variant = "column";
                         } else {
 
-                            "Identifier" === column.token && (column.variant = "column");
+                            ("Identifier" === column.token || "String" === column.token) && (column.variant = "column");
                         }
                     }
 
@@ -1233,7 +1235,7 @@
 
                     // 使用正则验证一下
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*)(|recursive\s*(database\s*object operator\s*table\s*table|database\s*object operator\s*table|table\s*table|table)\s*)+$/g);
-                    let str = tool.arrayToNewArrayByProperty(tables, "variant").join(" ");
+                    let str = tool.arrayToNewArrayByProperty(tables, "variant", (column) => "alias" !== column.variant).join(" ");
                     if (!reg.test(str)) {
 
                         throw tool.makeErrorObj(tables[0].index, "table error");
@@ -1469,6 +1471,49 @@
                         return true;
                     },
 
+                    preClear: {
+
+                        doing() {
+
+                            let sql = this.preClearBoundarySymbol(globalVariableContainer.sql_cleared);
+
+                            return sql;
+                        },
+
+                        preClearBoundarySymbol(sql) {
+
+                            // 把 SQL 中的换行符全部替代成空格
+                            sql = sql.replace(/[\r\n]/g, " ").trim();
+
+                            let length = sql.length;
+
+                            let target = false;
+                            let chars = ['"', "'"];
+                            for (let ch of chars) {
+
+                                for (let j = 0; j <= length - 1; ++j) {
+
+                                    if (!target && ch === sql[j]) {
+
+                                        target = true;
+                                        continue;
+                                    } else if (target && ch === sql[j]) {
+
+                                        target = false;
+                                        continue;
+                                    }
+
+                                    if (target && " " === sql[j]) {
+
+                                        sql = tool.strReplacePos(sql, j, j, "_");
+                                    }
+                                }
+                            }
+
+                            return sql;
+                        },
+                    },
+
                     clear() {
 
                         // 对SQL进行trim处理, 如果没有分号, 则添加
@@ -1477,9 +1522,9 @@
 
                             sql += ";";
                         }
+                        globalVariableContainer.sql_cleared = sql;
 
-                        // 把 SQL 中的换行符全部替代成空格
-                        sql = sql.replace(/[\r\n]/g, " ").trim();
+                        sql = this.preClear.doing();
 
                         // 对SQL中的目标字符两侧添加空白符
                         let breakpoint_obj = constContainer.referenceTable.symbolTable;
@@ -1497,6 +1542,38 @@
 
                         // 使用空格split, 并过滤掉空元素
                         globalVariableContainer.sql_lexicon_arr = tool.trimArray(sql.split(" "));
+
+                        this.afterDemarcate.doing();
+                    },
+
+                    afterDemarcate: {
+
+                        doing() {
+
+                            this.resumeBoundarySymbolInLexiconArr();
+                        },
+
+                        resumeBoundarySymbolInLexiconArr() {
+
+                            let length = globalVariableContainer.sql_lexicon_arr.length;
+                            for (let i = 0; i <= length - 1; ++i) {
+
+                                if (globalVariableContainer.sql_lexicon_arr[i].search("_") > -1) {
+
+                                    let length = globalVariableContainer.sql_lexicon_arr[i].length;
+                                    let str = globalVariableContainer.sql_lexicon_arr[i];
+                                    for (let j = 0; j <= length - 1; ++j) {
+
+                                        if(str[j-1] && str[j-1] !== "_" && str[j] === "_"){
+
+                                            str = tool.strReplacePos(str,j,j," ");
+                                        }
+                                    }
+                                    globalVariableContainer.sql_lexicon_arr[i] = str;
+                                }
+                            }
+                            console.log(globalVariableContainer.sql_lexicon_arr);
+                        }
                     },
 
                     // 创建 token 表, 会合并部分目标单元
@@ -1913,7 +1990,6 @@
                         } else {
 
                             if ("value" === property) {
-
 
                                 let lexicon = JSON.parse(JSON.stringify(obj[property]));
                                 if (keyword_table.indexOf(obj.value) > -1 || lexicon.split(" ").length > 1) {
