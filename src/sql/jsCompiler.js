@@ -1,6 +1,5 @@
 /**
  * Todo:
- * 1. 缺少 对 having 的支持
  * 2. 缺少 对 函数 的友好支持
  * 3. 只支持3个子查询(即3个select)
  * 4. 对 ` 字符的处理
@@ -429,6 +428,8 @@
                 "<": "operator",
                 "=": "operator",
                 "!=": "operator",
+                "<>": "operator",
+                "like": "operator",
 
                 ";": "close",
                 "(": "left_bracket",
@@ -1496,7 +1497,7 @@
 
                                 node.value = lexicon + " by";
                                 i += 2;
-                            } else if ("Punctuator" === node.type && "Punctuator" === last_node.type) {
+                            } else if ("Punctuator" === node.type && "Punctuator" === last_node.type && ["<>", ">=", "<=", "!=", "=<", "=>", "=!"].indexOf(last_node.value + node.value) > -1) {
 
                                 last_node.value += node.value;
                                 i++;
