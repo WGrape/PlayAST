@@ -935,7 +935,9 @@
                         "values": this.understandValueList,
 
                         "where": this.understandWhereExprList,
-                        "set": this.understandWhereExprList, // Todo:严格模式, 即运算符只能是等号
+                        "set": this.understandWhereExprList,
+                        "having": this.understandWhereExprList,
+
                         "group by": this.understandGroupByExprList,
                         "order by": this.understandOrderByExprList,
 
@@ -1564,15 +1566,14 @@
                                     let str = globalVariableContainer.sql_lexicon_arr[i];
                                     for (let j = 0; j <= length - 1; ++j) {
 
-                                        if(str[j-1] && str[j-1] !== "_" && str[j] === "_"){
+                                        if (str[j - 1] && str[j - 1] !== "_" && str[j] === "_") {
 
-                                            str = tool.strReplacePos(str,j,j," ");
+                                            str = tool.strReplacePos(str, j, j, " ");
                                         }
                                     }
                                     globalVariableContainer.sql_lexicon_arr[i] = str;
                                 }
                             }
-                            console.log(globalVariableContainer.sql_lexicon_arr);
                         }
                     },
 
