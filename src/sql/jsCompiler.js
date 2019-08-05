@@ -1524,7 +1524,7 @@
                     clear() {
 
                         // 对SQL进行trim处理, 如果没有分号, 则添加
-                        let sql = globalVariableContainer.sql.trim();
+                        let sql = globalVariableContainer.sql.trim().replace(";", "");
                         if (";" !== sql[sql.length - 1]) {
 
                             sql += ";";
