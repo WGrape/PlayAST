@@ -2,8 +2,6 @@
  * Todo:
  * 1. 默认不格式化SQL(格式化SQL会加长执行时间)
  * 2. 缺少 对 函数 的友好支持
- * 3. 只支持3个子查询(即3个select)
- * 4. 对 ` 字符的处理
  * 5. 不怕输入任何的括号, 因为在词法分析阶段, 就会把那些不必要的括号都删除掉, 只留下必要的括号, 这样也方便后续处理。
  * 6. NULL 的处理
  * 7. 对 variant 属性 , value 属性的使用不太简单清晰，有点乱
@@ -93,10 +91,21 @@
 
                 supportFunctions: {
 
+                    // 值不同于上面, 这里的函数值必须写function, 因为要赋值到 tokenValueMapVariant 中
                     "concat": "function",
+                    "length": "function",
+                    "char_length": "function",
+                    "upper": "function",
+                    "lower": "function",
+
+                    "year": "function",
+                    "now": "function",
+
                     "avg": "function",
                     "sum": "function",
                     "max": "function",
+                    "min": "function",
+                    "count": "function",
                 },
             },
 
@@ -1112,7 +1121,7 @@
                     }
 
                     // 使用正则验证一下
-                    let reg = /^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)+$/g;
+                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|function\s*column|function|column)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|function\s*column|function|column)\s*)+$/g);
                     if (false === orderby && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
 
                         throw tool.makeErrorObj(columns[0].index, "column error");
@@ -1155,7 +1164,7 @@
                     }
 
                     // 使用正则验证一下
-                    let reg = /^((\s*left)+\s*operator(\s*right)+\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/;
+                    let reg = new RegExp(/^((\s*left)+\s*operator(\s*right)+\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/);
                     if (!reg.test(tool.arrayToNewArrayByProperty(items, "variant").join(" "))) {
 
                         throw tool.makeErrorObj(items[0].index, operatorOnlyEqual ? "Set clause error" : "where error");
@@ -1167,8 +1176,7 @@
                     tool.pruningAST.sensing.understandColumnList(first, true);
 
                     // 使用正则验证一下
-                    let reg = /^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)+$/g;
-
+                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)+$/g);
                     if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
 
                         throw tool.makeErrorObj(first[0].index, "order by column error");
@@ -1364,7 +1372,12 @@
                         // 如果出现子查询, 则全部都加到query中
                         if ("function" === ast_outline[i].variant) {
 
-                            let node_function = {type: "function", function: [], function_name: ast_outline[i].value};
+                            let node_function = {
+                                type: "function",
+                                variant: "function",
+                                function: [],
+                                function_name: ast_outline[i].value
+                            };
 
                             // 未遇到 ) 括号前, 把遇到的参数都塞进去
                             "left_bracket" === ast_outline[i + 1].variant && delete ast_outline[i + 1]; // 把左括号删掉

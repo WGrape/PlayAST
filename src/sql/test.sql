@@ -1,3 +1,6 @@
+
+-- 测试SQL
+
 SELECT ProductID, Total = SUM(LineTotal)
 FROM Sales.SalesOrderDetail
 GROUP BY ProductID
