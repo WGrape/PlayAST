@@ -6,6 +6,7 @@
  * 4. 对 ` 字符的处理
  * 5. 不怕输入任何的括号, 因为在词法分析阶段, 就会把那些不必要的括号都删除掉, 只留下必要的括号, 这样也方便后续处理。
  * 6. NULL 的处理
+ * 7. 对 variant 属性 , value 属性的使用不太简单清晰，有点乱
  * Author:Lvsi
  */
 (function () {
@@ -896,12 +897,6 @@
 
                         "values": this.understandValueList,
 
-                        "join": this.understandJoinExprList,
-                        "left join": this.understandJoinExprList,
-                        "right join": this.understandJoinExprList,
-                        "full join": this.understandJoinExprList,
-                        "inner join": this.understandJoinExprList,
-
                         "where": this.understandWhereExprList,
                         "set": this.understandWhereExprList, // Todo:严格模式, 即运算符只能是等号
                         "group by": this.understandGroupByExprList,
@@ -927,6 +922,10 @@
                         } else if ("insert" === node['for']) {
 
                             this.sensingGroupingSpeciallyForInsert(node);
+                            continue;
+                        } else if (node['for'].indexOf("join") > -1) {
+
+                            this.sensingGroupingSpeciallyForJoin(node);
                             continue;
                         }
 
@@ -998,6 +997,41 @@
                     tool.pruningAST.sensing.understandColumnList(columns);
                 },
 
+                sensingGroupingSpeciallyForJoin(node) {
+
+                    node = node.grouping;
+
+                    // understand tables & understand columns
+
+                    // 从 on 之前的都是 understand tables
+                    let tables = [];
+                    for (let table of node) {
+
+                        if ("on" === table.value && "on" === table.variant && "Keyword" === table.token) {
+
+                            break;
+                        }
+                        tables.push(table);
+                    }
+                    tool.pruningAST.sensing.understandTableList(tables);
+
+                    // 从 on 之后的都是 understand where
+                    let is_target = false;
+                    let columns = [];
+                    for (let column of node) {
+
+                        if ("on" === column.value) {
+
+                            is_target = true;
+                            continue;
+                        }
+
+                        is_target && columns.push(column);
+                    }
+
+                    tool.pruningAST.sensing.understandWhereExprList(columns);
+                },
+
                 understandColumnList(columns, orderby = false) {
 
                     let length = columns.length;
@@ -1047,73 +1081,39 @@
 
                 understandWhereExprList(items) {
 
+                    let operator_num = 0;
                     let length = items.length;
                     for (let i = 0; i <= length - 1; ++i) {
 
-                        let pre_item = items[i - 1];
                         let item = items[i];
 
+                        // 运算符和间断符
                         if ("operator" === item.variant) {
 
-                            // 如果上一个字段是普通列
-                            if (pre_item && "Identifier" === pre_item.token) {
+                            item.variant = "operator";
+                            ++operator_num;
+                            continue;
+                        }else if("recursive" === item.variant){
 
-                                pre_item.variant = "left";
-                            }
-                        } else if (pre_item && "function" !== pre_item.type && "recursive" === item.variant) {
+                            ++operator_num;
+                            continue;
+                        }
 
-                            pre_item.variant = "right";
-                        } else if (length - 1 === i) {
+                        // 左右运算数
+                        if (0 === operator_num % 2) {
 
-                            item.variant = "right";
+                            item.variant = "left";
                         } else {
 
-                            ("Identifier" === item.token || "object operator" === item.variant) && (item.variant = "left");
+                            item.variant = "right";
                         }
                     }
 
                     // 使用正则验证一下
-                    let reg = /^((\s*left)+\s*operator\s*right\s*)(\s*recursive\s*(\s*left)+\s*operator\s*right\s*)*$/;
+                    let reg = /^((\s*left)+\s*operator(\s*right)+\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/;
                     if (!reg.test(tool.arrayToNewArrayByProperty(items, "variant").join(" "))) {
 
                         throw tool.makeErrorObj(items[0].index, "where error");
-                    }
-                },
-
-                understandJoinExprList(columns) {
-
-                    let length = columns.length;
-                    for (let i = 0; i <= length - 1; ++i) {
-
-                        let pre_pre_pre_column = columns[i - 3];
-                        let pre_pre_column = columns[i - 2];
-                        let pre_column = columns[i - 1];
-                        let column = columns[i];
-                        let next_column = columns[i + 1];
-
-                        if ("object operator" === column.variant) {
-
-                            // 如果上一个字段是普通列
-                            if (pre_column && "column" === pre_column.variant) {
-
-                                // 给上个字段升级为表对象
-                                pre_column.variant = "table";
-
-                                // 给上上个字段升级为库对象
-                                if (pre_pre_column && "object operator" === pre_pre_column.variant) {
-                                    pre_pre_pre_column && (pre_pre_pre_column.variant = "database");
-                                }
-                            }
-                        } else if (pre_column && "Identifier" === pre_column.token && pre_pre_column && "object operator" === pre_pre_column.variant && "on" === column.value) {
-
-                            pre_column.variant = "column";
-                        } else if ("Identifier" === column.token && next_column && "Identifier" === next_column.token) {
-
-                            column.variant = "table";
-                        } else {
-
-                            "Identifier" === column.token && (column.variant = (next_column && "on" === next_column.value) ? "table" : "column");
-                        }
                     }
                 },
 

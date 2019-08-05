@@ -96,7 +96,7 @@ limit 0 , 32
 <!--<textarea id="SQL_Input">INSERT INTO test ( name, age ) VALUES ( "Jack", 65 )</textarea>-->
 <!--<textarea id="SQL_Input">update a set a.col=b.col from a join b on a.id=b.id</textarea>-->
 <!--<textarea id="SQL_Input">DELETE A FROM YSHA A LEFT JOIN YSHB B ON A.code=b.code WHERE b.code = "jk"</textarea>-->
-<textarea id="SQL_Input">select name ,age from users where id > 0 and id < 1000 order by id desc limit 5 , 100;</textarea>
+<textarea id="SQL_Input">select name , age from db.users left join db.test on users.id = test.uid where id > 0 and id < 1000 order by id desc limit 5 , 100 ;</textarea>
 
 
 <button id="Go">Go</button>
