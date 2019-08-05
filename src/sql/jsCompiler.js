@@ -502,6 +502,12 @@
 
         errorHandle(e) {
 
+            if ("undefined" === typeof e.index) {
+
+                console.error(e);
+                return;
+            }
+
             let token_table = globalVariableContainer.tokenTable, msg = "ERRNO " + e.index + " near : ";
 
             if (e.index < 3) {
@@ -923,7 +929,7 @@
                         if (")" === node.value) {
 
                             ++right_bracket_num;
-                            node.matched_bracket_index = tool.getLastNthLeftBracketASTIndex(right_bracket_num);
+                            //node.matched_bracket_index = tool.getLastNthLeftBracketASTIndex(right_bracket_num);
                         }
                     }
                 }
@@ -1116,12 +1122,12 @@
                             pre_column.variant = "column";
                         } else {
 
-                            ("Identifier" === column.token || "String" === column.token) && (column.variant = "column");
+                            ("function" === column.variant || "Identifier" === column.token || "String" === column.token) && (column.variant = "column");
                         }
                     }
 
                     // 使用正则验证一下
-                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|function\s*column|function|column)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|function\s*column|function|column)\s*)+$/g);
+                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)+$/g);
                     if (false === orderby && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
 
                         throw tool.makeErrorObj(columns[0].index, "column error");
@@ -1176,7 +1182,7 @@
                     tool.pruningAST.sensing.understandColumnList(first, true);
 
                     // 使用正则验证一下
-                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(sort){0,1}\s*)+$/g);
+                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)+$/g);
                     if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
 
                         throw tool.makeErrorObj(first[0].index, "order by column error");
@@ -1333,7 +1339,11 @@
                         if ("(" === ast_outline[i].value) {
 
                             ++left_bracket_num;
+                        } else if (")" === ast_outline[i].value) {
+
+                            --left_bracket_num;
                         }
+
 
                         // 如果出现子查询, 则全部都加到query中
                         if ("(" === ast_outline[i].value && ast_outline[i - 1] && ast_outline[i - 1].value === "from") {
@@ -1345,7 +1355,7 @@
                             // 把所有连续的 expression 都打入 node_subquery 中
                             for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
 
-                                if (ast_outline[i].index !== ast_outline[j].matched_bracket_index) {
+                                if (ast_outline[i].index !== ast_outline[j].index) {
 
                                     node_subquery.subquery.push(ast_outline[j]);
                                     delete ast_outline[j];
