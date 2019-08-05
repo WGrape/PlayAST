@@ -1,5 +1,6 @@
 /**
  * Todo:
+ * 1. 默认不格式化SQL(格式化SQL会加长执行时间)
  * 2. 缺少 对 函数 的友好支持
  * 3. 只支持3个子查询(即3个select)
  * 4. 对 ` 字符的处理
@@ -20,7 +21,7 @@
 
                 "'": 1001,
                 "\"": 1002,
-                "`": 1003,
+                // "`": 1003, 不再对 ` 字符作为分割字符(不会再把 ` 单独拆开)
                 ",": 1004,
                 ";": 1005,
                 "(": 1006,
@@ -51,11 +52,11 @@
                     "order": 20002,
                     "by": 20003,
                     "limit": 20004,
-                    "left": 20005,
-                    "right": 20006,
                     "inner": 20007,
                     "outer": 20008,
                     "full": 20009,
+                    "left": 20005,
+                    "right": 20006,
                     "join": 20010,
                     "on": 20011,
                     "group": 20012,
@@ -68,6 +69,7 @@
                     "desc": 20019,
                     "asc": 20020,
                     "as": 20021,
+                    "having": 20022,
                 },
 
                 updateStatement: {
@@ -439,7 +441,10 @@
                 "asc": "sort",
 
                 // 写下支持的函数列表
-                "concat": "function"
+                "concat": "function",
+                "avg": "function",
+                "sum": "function",
+                "max": "function",
             }
         },
 
@@ -508,14 +513,43 @@
             console.error(msg); // alert("解析失败 : " + e.message);
         },
 
+        // 返回关键字数组
+        returnKeywordArray() {
+
+            let arr = [];
+
+            let curs = ['insertStatement', 'deleteStatement', 'updateStatement', 'selectStatement', 'curdStatement', 1];
+
+            for (let cur of curs) {
+
+                let obj;
+                if (1 === cur) {
+                    obj = constContainer.tokenRelationAST.tokenValueMapVariant;
+                } else {
+
+                    obj = constContainer.referenceTable.keywordTable[cur];
+                }
+                for (let property in obj) {
+
+                    if (obj.hasOwnProperty(property)) {
+
+                        arr.push(property);
+                    }
+                }
+            }
+
+            return arr;
+        },
+
+
         // 根据属性把一个数组转成一个新数组
-        arrayToNewArrayByProperty(arr, property) {
+        arrayToNewArrayByProperty(arr, property, callback = () => true) {
 
             let new_array = [];
 
             for (let item of arr) {
 
-                new_array.push(item[property]);
+                callback(item) && item[property] && new_array.push(item[property]);
             }
 
             return new_array;
@@ -1074,7 +1108,7 @@
 
                     // 使用正则验证一下
                     let reg = /^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*)+$/g;
-                    if (false === orderby && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant").join(" "))) {
+                    if (false === orderby && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
 
                         throw tool.makeErrorObj(columns[0].index, "column error");
                     }
@@ -1823,6 +1857,8 @@
 
                 let obj = this.steps.syntacticAnalysis.getAST();
 
+                let keyword_table = tool.returnKeywordArray();
+
                 // 如果 ast 的type 是下面的, 则换行且缩进
                 let enter_indent_arr = ["statement", "clause", "predicate", "function"];
 
@@ -1853,7 +1889,7 @@
                                 indent += 4;
                             } else if ("function" === property) {
 
-                                sql = sql + " " + obj['function_name'] + "(";
+                                sql = sql + " " + obj['function_name'].toLocaleUpperCase() + "(";
                             }
 
                             for (let item of obj[property]) {
@@ -1878,16 +1914,23 @@
 
                             if ("value" === property) {
 
+
+                                let lexicon = JSON.parse(JSON.stringify(obj[property]));
+                                if (keyword_table.indexOf(obj.value) > -1 || lexicon.split(" ").length > 1) {
+
+                                    lexicon = lexicon.toLocaleUpperCase();
+                                }
+
                                 if (enter_indent_arr.indexOf(obj['type']) > -1) {
 
 
                                     enters = (sql !== "") ? (++enters) : enters;
-                                    sql = sql + (sql === "" ? "" : "\n") + tool.makeContinuousStr(indent) + obj[property];
+                                    sql = sql + (sql === "" ? "" : "\n") + tool.makeContinuousStr(indent) + lexicon;
                                 } else {
 
                                     whitespace = !("." === obj['value'] || "." === last_char);
-                                    sql = sql + (whitespace ? " " : "") + obj[property];
-                                    last_char = obj[property];
+                                    sql = sql + (whitespace ? " " : "") + lexicon;
+                                    last_char = lexicon;
                                 }
                             }
                         }
