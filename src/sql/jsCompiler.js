@@ -1081,11 +1081,16 @@
 
                 understandWhereExprList(items) {
 
-                    let operator_num = 0;
+                    let operator_num = 0, operatorOnlyEqual = ("update" === globalVariableContainer.statement_type);
                     let length = items.length;
                     for (let i = 0; i <= length - 1; ++i) {
 
                         let item = items[i];
+
+                        if (operatorOnlyEqual && "operator" === item.variant && "=" !== item.value) {
+
+                            throw tool.makeErrorObj(item.index, "operator error, only equal operator");
+                        }
 
                         // 运算符和间断符
                         if ("operator" === item.variant) {
@@ -1093,7 +1098,7 @@
                             item.variant = "operator";
                             ++operator_num;
                             continue;
-                        }else if("recursive" === item.variant){
+                        } else if ("recursive" === item.variant) {
 
                             ++operator_num;
                             continue;
@@ -1113,7 +1118,7 @@
                     let reg = /^((\s*left)+\s*operator(\s*right)+\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/;
                     if (!reg.test(tool.arrayToNewArrayByProperty(items, "variant").join(" "))) {
 
-                        throw tool.makeErrorObj(items[0].index, "where error");
+                        throw tool.makeErrorObj(items[0].index, operatorOnlyEqual ? "Set clause error" : "where error");
                     }
                 },
 
@@ -1471,11 +1476,8 @@
                             // 生成node, 并添加 index 属性
                             let lexicon = lexicon_arr[i];
                             let next_lexicon = lexicon_arr[i + 1];
+                            let last_node = token_arr[token_arr.length - 1];
                             let node = this.generateTokenNode(lexicon);
-
-                            // 把 node 结点扔到 lexicon_arr
-                            token_arr.push(node);
-                            node.index = token_arr.length - 1;
 
                             // 如果当前词是以下, 则需要合并
                             if ("insert" === lexicon) {
@@ -1494,14 +1496,19 @@
 
                                 node.value = lexicon + " by";
                                 i += 2;
-                            } else if (["!", ">", "<"].indexOf(lexicon) > -1 && "=" === next_lexicon) {
+                            } else if ("Punctuator" === node.type && "Punctuator" === last_node.type) {
 
-                                node.value = lexicon + "=";
-                                i += 2;
+                                last_node.value += node.value;
+                                i++;
+                                continue;
                             } else {
 
                                 ++i;
                             }
+
+                            // 把 node 结点扔到 lexicon_arr
+                            token_arr.push(node);
+                            node.index = token_arr.length - 1;
                         }
 
                         // token 表创建成功
