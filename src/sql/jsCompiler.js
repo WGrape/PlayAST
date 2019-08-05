@@ -89,7 +89,15 @@
                     "from": 20030,
                     "where": 20031,
                     "and": 20032,
-                }
+                },
+
+                supportFunctions: {
+
+                    "concat": "function",
+                    "avg": "function",
+                    "sum": "function",
+                    "max": "function",
+                },
             },
 
             // scope表
@@ -441,15 +449,10 @@
                 "asc": "sort",
 
                 // 写下支持的函数列表
-                "concat": "function",
-                "avg": "function",
-                "sum": "function",
-                "max": "function",
             }
         },
 
     };
-
     let globalVariableContainer = {
 
         /**
@@ -482,7 +485,6 @@
         ast_outline_transformed: {}, // 转换后的 AST
         ast: {}, // 经过优化后的最终的 AST
     };
-
     let tool = {
 
         constContainer: constContainer,
@@ -513,22 +515,21 @@
             console.error(msg); // alert("解析失败 : " + e.message);
         },
 
+        combineObjectToObject(obj, _obj) {
+
+            return Object.assign(obj, _obj);
+        },
+
         // 返回关键字数组
         returnKeywordArray() {
 
             let arr = [];
 
-            let curs = ['insertStatement', 'deleteStatement', 'updateStatement', 'selectStatement', 'curdStatement', 1];
+            let curs = ['insertStatement', 'deleteStatement', 'updateStatement', 'selectStatement', 'curdStatement', 'supportFunctions'];
 
             for (let cur of curs) {
 
-                let obj;
-                if (1 === cur) {
-                    obj = constContainer.tokenRelationAST.tokenValueMapVariant;
-                } else {
-
-                    obj = constContainer.referenceTable.keywordTable[cur];
-                }
+                let obj = constContainer.referenceTable.keywordTable[cur];
                 for (let property in obj) {
 
                     if (obj.hasOwnProperty(property)) {
@@ -1390,6 +1391,10 @@
             },
         },
     };
+    constContainer.tokenRelationAST.tokenValueMapVariant = tool.combineObjectToObject(
+        constContainer.tokenRelationAST.tokenValueMapVariant,
+        constContainer.referenceTable.keywordTable.supportFunctions
+    );
 
     let SQLCompiler = function (sql = "") {
 
@@ -1519,7 +1524,7 @@
                     clear() {
 
                         // 对SQL进行trim处理, 如果没有分号, 则添加
-                        let sql = globalVariableContainer.sql.toLowerCase().trim();
+                        let sql = globalVariableContainer.sql.trim();
                         if (";" !== sql[sql.length - 1]) {
 
                             sql += ";";
@@ -1555,6 +1560,7 @@
                             this.resumeBoundarySymbolInLexiconArr();
                         },
 
+                        // 恢复处理
                         resumeBoundarySymbolInLexiconArr() {
 
                             let length = globalVariableContainer.sql_lexicon_arr.length;
@@ -1587,10 +1593,11 @@
                         for (let i = 0; i <= length - 1;) {
 
                             // 生成node, 并添加 index 属性
-                            let lexicon = lexicon_arr[i];
-                            let next_lexicon = lexicon_arr[i + 1];
+                            let lexicon_raw = lexicon_arr[i];
                             let last_node = token_arr[token_arr.length - 1];
-                            let node = this.generateTokenNode(lexicon);
+                            let node = this.generateTokenNode(lexicon_raw);
+                            let lexicon = lexicon_arr[i].toLocaleLowerCase();
+                            let next_lexicon = (lexicon_arr[i + 1]) ? lexicon_arr[i + 1].toLocaleLowerCase() : undefined;
 
                             // 如果当前词是以下, 则需要合并
                             if ("insert" === lexicon) {
@@ -1634,18 +1641,11 @@
                         // {type:"",value:""}
 
                         // 词汇是关键字
-                        let keywordTable = constContainer.referenceTable.keywordTable;
-                        if (keywordTable.curdStatement[lexicon] || keywordTable.selectStatement[lexicon]) {
+                        let lexiconLowerCase = lexicon.toLocaleLowerCase();
+                        let keywordTable = tool.returnKeywordArray();
+                        if (keywordTable.indexOf(lexiconLowerCase) > -1) {
 
-                            return {type: "Keyword", value: lexicon};
-                        }
-                        if (keywordTable.updateStatement[lexicon] || keywordTable.insertStatement[lexicon]) {
-
-                            return {type: "Keyword", value: lexicon};
-                        }
-                        if (keywordTable.deleteStatement[lexicon]) {
-
-                            return {type: "Keyword", value: lexicon};
+                            return {type: "Keyword", value: lexiconLowerCase};
                         }
 
                         // 词汇是符号
@@ -1934,7 +1934,6 @@
             beautySQL() {
 
                 let obj = this.steps.syntacticAnalysis.getAST();
-
                 let keyword_table = tool.returnKeywordArray();
 
                 // 如果 ast 的type 是下面的, 则换行且缩进
@@ -1995,11 +1994,11 @@
                                 let lexicon = JSON.parse(JSON.stringify(obj[property]));
                                 if (keyword_table.indexOf(obj.value) > -1 || lexicon.split(" ").length > 1) {
 
+                                    // 如果是关键字, 或者是合并后的字符串是关键字( 后面的lexicon.split针对于如group by之类的 )
                                     lexicon = lexicon.toLocaleUpperCase();
                                 }
 
                                 if (enter_indent_arr.indexOf(obj['type']) > -1) {
-
 
                                     enters = (sql !== "") ? (++enters) : enters;
                                     sql = sql + (sql === "" ? "" : "\n") + tool.makeContinuousStr(indent) + lexicon;
