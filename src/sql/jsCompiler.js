@@ -2,6 +2,8 @@
  * Todo:
  * 1. 默认不格式化SQL(格式化SQL会加长执行时间)
  * 2. 缺少 对 函数 的友好支持
+ * 3. 字段名函数名等 identifier 被误认为关键字的bug
+ * 4. DISTINCT, UNION ALL
  * 5. 不怕输入任何的括号, 因为在词法分析阶段, 就会把那些不必要的括号都删除掉, 只留下必要的括号, 这样也方便后续处理。
  * 6. NULL 的处理
  * 7. 对 variant 属性 , value 属性的使用不太简单清晰，有点乱
@@ -482,7 +484,7 @@
          * lexicalAnalysis 词法分析阶段的产物
          */
         sql_cleared: "", // 清洁后的SQL
-        sql_lexicon_arr: "", // SQL词汇数组
+        sql_lexicon_arr: [], // SQL词汇数组
         tokenTable: [], // 当前的Token表
 
         /**
@@ -1379,7 +1381,7 @@
 
                     for (let i = 0; i <= length - 1 && ast_outline[i]; ++i) {
 
-                        // 如果出现子查询, 则全部都加到query中
+                        // 如果出现函数, 则全部都加到node_function中
                         if ("function" === ast_outline[i].variant) {
 
                             let node_function = {
@@ -1401,6 +1403,10 @@
                             "right_bracket" === ast_outline[j].variant && delete ast_outline[j]; // 把右括号删掉
                             ast_outline[i] = node_function;
                             i = j;
+                        } else if ("Keyword" !== ast_outline[i].token && ast_outline[i + 1] && "(" === ast_outline[i + 1].value) {
+
+                            // 疑似函数, 但此并不是支持的函数
+                            throw tool.makeErrorObj(ast_outline[i].index, ast_outline[i].value + "不是所支持的函数");
                         }
                     }
                 },
@@ -1523,6 +1529,7 @@
 
                                 for (let j = 0; j <= length - 1; ++j) {
 
+
                                     if (!target && ch === sql[j]) {
 
                                         target = true;
@@ -1589,7 +1596,8 @@
                             let length = globalVariableContainer.sql_lexicon_arr.length;
                             for (let i = 0; i <= length - 1; ++i) {
 
-                                if (globalVariableContainer.sql_lexicon_arr[i].search("_") > -1) {
+                                let lexicon = globalVariableContainer.sql_lexicon_arr[i];
+                                if ((lexicon.search('"') > -1 || lexicon.search("'") > -1) && lexicon.search("_") > -1) {
 
                                     let length = globalVariableContainer.sql_lexicon_arr[i].length;
                                     let str = globalVariableContainer.sql_lexicon_arr[i];
@@ -2014,11 +2022,26 @@
 
                             if ("value" === property) {
 
-                                let lexicon = JSON.parse(JSON.stringify(obj[property]));
-                                if (keyword_table.indexOf(obj.value) > -1 || lexicon.split(" ").length > 1) {
+                                let lexicon = JSON.parse(JSON.stringify(obj.value));
+                                if (keyword_table.indexOf(lexicon) > -1) {
 
                                     // 如果是关键字, 或者是合并后的字符串是关键字( 后面的lexicon.split针对于如group by之类的 )
                                     lexicon = lexicon.toLocaleUpperCase();
+                                } else if (lexicon.split(" ").length > 1) {
+
+                                    let _lexicons = lexicon.split(" "), first = true;
+                                    lexicon = ""; // 清空
+                                    for (let _lexicon of _lexicons) {
+
+                                        if (keyword_table.indexOf(_lexicon) > -1) {
+
+                                            lexicon += (first ? "" : " ") + _lexicon.toLocaleUpperCase();
+                                        } else {
+
+                                            lexicon += (first ? "" : " ") + _lexicon;
+                                        }
+                                        first = false;
+                                    }
                                 }
 
                                 if (enter_indent_arr.indexOf(obj['type']) > -1) {
@@ -2027,7 +2050,7 @@
                                     sql = sql + (sql === "" ? "" : "\n") + tool.makeContinuousStr(indent) + lexicon;
                                 } else {
 
-                                    whitespace = !("." === obj['value'] || "." === last_char);
+                                    whitespace = !("." === lexicon || "." === last_char);
                                     sql = sql + (whitespace ? " " : "") + lexicon;
                                     last_char = lexicon;
                                 }
