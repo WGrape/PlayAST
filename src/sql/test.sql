@@ -89,3 +89,11 @@ LEFT JOIN Websites
 ON access_log.site_id=Websites.id
 GROUP BY Websites.name;
 
+
+
+
+SELECT site_id , `cou nt` , SUM( access_log.count ) AS "nums hehe"
+FROM access_log
+GROUP BY site_id ;
+
+

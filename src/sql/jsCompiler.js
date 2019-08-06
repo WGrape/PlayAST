@@ -909,19 +909,19 @@
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let length = ast_outline.length;
 
-                    let tokenTable = globalVariableContainer.tokenTable;
                     let tokenValueMapVariant = constContainer.tokenRelationAST.tokenValueMapVariant;
                     for (let i = 0; i <= length - 1; ++i) {
 
                         let node = ast_outline[i];
                         let next_node = ast_outline[i + 1];
 
-                        // 根据当前节点的 Value 对当前节点Variant进行Diff。node.variant === node.value 表示当前节点的 variant 值还是当时创建的时候给的, 所以需要对它Diff
+                        // 识别函数不能仅依赖tokenValueMapVariant, 需要特殊处理
                         if ("function" === tokenValueMapVariant[node.value] && next_node && "(" !== next_node.value) {
 
                             continue;
                         }
 
+                        // 根据当前节点的 Value 对当前节点Variant进行Diff。node.variant === node.value 表示当前节点的 variant 值还是当时创建的时候给的, 所以需要对它Diff
                         node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
                     }
                 },
@@ -1226,7 +1226,7 @@
 
                         } else {
 
-                            throw tool.makeErrorObj(value.index);
+                            throw tool.makeErrorObj(value.index,"value list error");
                         }
                     }
 
@@ -1284,7 +1284,7 @@
 
                         } else {
 
-                            throw tool.makeErrorObj(number.index);
+                            throw tool.makeErrorObj(number.index, "limit error");
                         }
                     }
 
@@ -1520,41 +1520,32 @@
 
                         doing() {
 
-                            let sql = this.preClearBoundarySymbol(globalVariableContainer.sql_cleared);
+                            let sql = globalVariableContainer.sql;
+
+                            sql = this.preClearMixResolving(sql);
+                            sql = this.preClearBoundarySymbol(sql);
+
+                            return sql;
+                        },
+
+                        preClearMixResolving(sql) {
+
+                            // 处理分号
+                            sql = sql.trim().replace(";", "");
+                            if (";" !== sql[sql.length - 1]) {
+
+                                sql += ";";
+                            }
+
+                            // 把 SQL 中的换行符全部替代成空格
+                            sql = sql.replace(/[\r\n]/g, " ").trim();
 
                             return sql;
                         },
 
                         preClearBoundarySymbol(sql) {
 
-                            // 把 SQL 中的换行符全部替代成空格
-                            sql = sql.replace(/[\r\n]/g, " ").trim();
-
-                            let length = sql.length;
-
-                            let target = false;
-                            let chars = ['"', "'"];
-                            for (let ch of chars) {
-
-                                for (let j = 0; j <= length - 1; ++j) {
-
-
-                                    if (!target && ch === sql[j]) {
-
-                                        target = true;
-                                        continue;
-                                    } else if (target && ch === sql[j]) {
-
-                                        target = false;
-                                        continue;
-                                    }
-
-                                    if (target && " " === sql[j]) {
-
-                                        sql = tool.strReplacePos(sql, j, j, "_");
-                                    }
-                                }
-                            }
+                            // 处理不必要的括号
 
                             return sql;
                         },
@@ -1563,14 +1554,7 @@
                     clear() {
 
                         // 对SQL进行trim处理, 如果没有分号, 则添加
-                        let sql = globalVariableContainer.sql.trim().replace(";", "");
-                        if (";" !== sql[sql.length - 1]) {
-
-                            sql += ";";
-                        }
-                        globalVariableContainer.sql_cleared = sql;
-
-                        sql = this.preClear.doing();
+                        let sql = this.preClear.doing();
 
                         // 对SQL中的目标字符两侧添加空白符
                         let breakpoint_obj = constContainer.referenceTable.symbolTable;
@@ -1586,8 +1570,55 @@
 
                         let sql = globalVariableContainer.sql_cleared;
 
+                        // 先跳过引号和转义号包着的字符串
+                        let length = sql.length;
+                        let sql_lexicon_arr = [];
+                        let quotes = ["'", '"', "`"];
+                        let left, leftChar, right, rightChar;
+                        for (let i = 0; i <= length - 1;) {
+
+                            left = i;
+                            leftChar = sql[i];
+
+                            // 当前字符是引号
+                            if (quotes.indexOf(sql[i]) > -1) {
+
+                                // 找下一个匹配的右边字符
+                                for (right = left + 1; right <= length - 1; ++right) {
+
+                                    if (leftChar === sql[right]) {
+
+                                        rightChar = sql[right];
+                                        break;
+                                    }
+                                }
+                                if (length === right) {
+
+                                    throw tool.makeErrorObj(false, "右侧没有找到匹配的字符" + leftChar);
+                                }
+                                sql_lexicon_arr.push(sql.slice(left, right + 1));
+                                i = right + 1;
+                            }
+
+                            // 当前字符是空格
+                            else if (" " === sql[i]) {
+
+                                ++i;
+                            }
+
+                            // 当前是普通字符
+                            else {
+
+                                // 找出连续没有空格的字符串
+                                for (right = left + 1; right <= length - 1 && " " !== sql[right]; ++right) {
+                                }
+                                sql_lexicon_arr.push(sql.slice(left, right));
+                                i = right + 1;
+                            }
+                        }
+
                         // 使用空格split, 并过滤掉空元素
-                        globalVariableContainer.sql_lexicon_arr = tool.trimArray(sql.split(" "));
+                        globalVariableContainer.sql_lexicon_arr = tool.trimArray(sql_lexicon_arr);
 
                         this.afterDemarcate.doing();
                     },
@@ -1596,31 +1627,7 @@
 
                         doing() {
 
-                            this.resumeBoundarySymbolInLexiconArr();
                         },
-
-                        // 恢复处理
-                        resumeBoundarySymbolInLexiconArr() {
-
-                            let length = globalVariableContainer.sql_lexicon_arr.length;
-                            for (let i = 0; i <= length - 1; ++i) {
-
-                                let lexicon = globalVariableContainer.sql_lexicon_arr[i];
-                                if ((lexicon.search('"') > -1 || lexicon.search("'") > -1) && lexicon.search("_") > -1) {
-
-                                    let length = globalVariableContainer.sql_lexicon_arr[i].length;
-                                    let str = globalVariableContainer.sql_lexicon_arr[i];
-                                    for (let j = 0; j <= length - 1; ++j) {
-
-                                        if (str[j - 1] && str[j - 1] !== "_" && str[j] === "_") {
-
-                                            str = tool.strReplacePos(str, j, j, " ");
-                                        }
-                                    }
-                                    globalVariableContainer.sql_lexicon_arr[i] = str;
-                                }
-                            }
-                        }
                     },
 
                     // 根据 lexicon 词汇类型, 生成 token node
@@ -1996,7 +2003,7 @@
             beautySQL() {
 
                 let obj = this.steps.syntacticAnalysis.getAST();
-                let keyword_table = tool.returnKeywordArray();
+                let token_table = globalVariableContainer.tokenTable;
 
                 // 如果 ast 的type 是下面的, 则换行且缩进
                 let enter_indent_arr = ["statement", "clause", "predicate", "function"];
@@ -2054,25 +2061,12 @@
                             if ("value" === property) {
 
                                 let lexicon = JSON.parse(JSON.stringify(obj.value));
-                                if (keyword_table.indexOf(lexicon) > -1 && (!obj.token || "Keyword" === obj.token)) {
+                                if ("Keyword" === token_table[obj.index].type) {
 
-                                    // 如果是关键字, 或者是合并后的字符串是关键字( 后面的lexicon.split针对于如group by之类的 )
                                     lexicon = lexicon.toLocaleUpperCase();
-                                } else if (lexicon.split(" ").length > 1) {
+                                } else {
 
-                                    let _lexicons = lexicon.split(" "), first = true;
-                                    lexicon = ""; // 清空
-                                    for (let _lexicon of _lexicons) {
-
-                                        if (keyword_table.indexOf(_lexicon) > -1) {
-
-                                            lexicon += (first ? "" : " ") + _lexicon.toLocaleUpperCase();
-                                        } else {
-
-                                            lexicon += (first ? "" : " ") + _lexicon;
-                                        }
-                                        first = false;
-                                    }
+                                    lexicon = token_table[obj.index].value;
                                 }
 
                                 if (enter_indent_arr.indexOf(obj['type']) > -1) {
