@@ -634,6 +634,16 @@
             return obj;
         },
 
+        makeErrorObjOfRegError(obj, msg) {
+
+            if (Array.isArray(obj)) {
+
+                return tool.makeErrorObj((obj[0] && obj[0].index) ? obj[0].index : false, msg);
+            }
+
+            return tool.makeErrorObj((obj && obj.index) ? obj.index : false, msg);
+        },
+
         // 在特定位置替换字符
         strReplacePos(text, start, stop, replace_text) {
 
@@ -1040,7 +1050,7 @@
                         }
                         tables.push(table);
                     }
-                    tool.pruningAST.sensing.understandTableList(tables);
+                    tool.pruningAST.sensing.understandTableList(tables, "insert");
 
                     // 从第一个左括号(不包括)到第1个右括号的都是待 understand columns
                     let is_target = false;
@@ -1079,7 +1089,7 @@
                         }
                         tables.push(table);
                     }
-                    tool.pruningAST.sensing.understandTableList(tables);
+                    tool.pruningAST.sensing.understandTableList(tables, "join");
 
                     // 从 on 之后的都是 understand where
                     let is_target = false;
@@ -1095,7 +1105,7 @@
                         is_target && columns.push(column);
                     }
 
-                    tool.pruningAST.sensing.understandWhereExprList(columns);
+                    tool.pruningAST.sensing.understandWhereExprList(columns, "join");
                 },
 
                 understandColumnList(columns, orderby = false) {
@@ -1141,11 +1151,11 @@
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)+$/g);
                     if (false === orderby && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
 
-                        throw tool.makeErrorObj(columns[0].index, "column error");
+                        throw tool.makeErrorObjOfRegError(columns, "column list error");
                     }
                 },
 
-                understandWhereExprList(items) {
+                understandWhereExprList(items, clause = "where") {
 
                     let operator_num = 0, operatorOnlyEqual = ("update" === globalVariableContainer.statement_type);
                     let length = items.length;
@@ -1155,7 +1165,7 @@
 
                         if (operatorOnlyEqual && "operator" === item.variant && "=" !== item.value) {
 
-                            throw tool.makeErrorObj(item.index, "operator error, only equal operator");
+                            throw tool.makeErrorObjOfRegError(item, "operator error, only equal operator");
                         }
 
                         // 运算符和间断符
@@ -1181,10 +1191,10 @@
                     }
 
                     // 使用正则验证一下
-                    let reg = new RegExp(/^((\s*left)+\s*operator(\s*right)+\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/);
+                    let reg = new RegExp(/^((\s*left)*(\s*operator)*(\s*right)*\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/);
                     if (!reg.test(tool.arrayToNewArrayByProperty(items, "variant").join(" "))) {
 
-                        throw tool.makeErrorObj(items[0].index, operatorOnlyEqual ? "Set clause error" : "where error");
+                        throw tool.makeErrorObjOfRegError(items, operatorOnlyEqual ? "Set clause error" : clause + " error");
                     }
                 },
 
@@ -1196,7 +1206,7 @@
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)+$/g);
                     if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
 
-                        throw tool.makeErrorObj(first[0].index, "order by column error");
+                        throw tool.makeErrorObjOfRegError(first, "order by column error");
                     }
                 },
 
@@ -1208,7 +1218,7 @@
                     let reg = new RegExp(/^\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*$/g);
                     if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
 
-                        throw tool.makeErrorObj(first[0].index, "group by error");
+                        throw tool.makeErrorObjOfRegError(first, "group by error");
                     }
                 },
 
@@ -1226,7 +1236,7 @@
 
                         } else {
 
-                            throw tool.makeErrorObj(value.index,"value list error");
+                            throw tool.makeErrorObj(value.index, "value list error");
                         }
                     }
 
@@ -1235,11 +1245,11 @@
                     let str = tool.arrayToNewArrayByProperty(values, "variant").join(" ");
                     if (!reg.test(str)) {
 
-                        throw tool.makeErrorObj(values[0].index, "values error");
+                        throw tool.makeErrorObjOfRegError(values, "value list error");
                     }
                 },
 
-                understandTableList(tables) {
+                understandTableList(tables, clause = "") {
 
                     let length = tables.length;
                     for (let i = 0; i <= length - 1; ++i) {
@@ -1266,7 +1276,7 @@
                     let str = tool.arrayToNewArrayByProperty(tables, "variant", (column) => "alias" !== column.variant).join(" ");
                     if (!reg.test(str)) {
 
-                        throw tool.makeErrorObj(tables[0].index, "table error");
+                        throw tool.makeErrorObjOfRegError(tables, clause + " table list error");
                     }
                 },
 
@@ -1292,7 +1302,7 @@
                     let reg = new RegExp(/^\s*Numeric(|\srecursive\sNumeric)$/);
                     if (!reg.test(tool.arrayToNewArrayByProperty(numbers, "variant").join(" "))) {
 
-                        throw tool.makeErrorObj(numbers[0].index, "limit error");
+                        throw tool.makeErrorObjOfRegError(numbers, "limit list error");
                     }
                 },
             },

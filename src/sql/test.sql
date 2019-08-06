@@ -97,3 +97,10 @@ FROM access_log
 GROUP BY site_id ;
 
 
+
+
+SELECT site_id , `cou nt` , SUM( access_log.count ) AS "nums hehe"
+FROM access_log
+LEFT JOIN db.test
+GROUP BY site_id ;
+
