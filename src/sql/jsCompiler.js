@@ -7,6 +7,8 @@
  * 5. 不怕输入任何的括号, 因为在词法分析阶段, 就会把那些不必要的括号都删除掉, 只留下必要的括号, 这样也方便后续处理。
  * 6. NULL 的处理
  * 7. 对 variant 属性 , value 属性的使用不太简单清晰，有点乱
+ * 8. index 全部节点都有, token 只有 expression 有
+ * 9. 关键字必须使用转义字符 ` , 不支持自动识别 : 如 select count ... from 此时不会自动识别 count 为 identifier
  * Author:Lvsi
  */
 (function () {
@@ -907,12 +909,19 @@
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let length = ast_outline.length;
 
+                    let tokenTable = globalVariableContainer.tokenTable;
                     let tokenValueMapVariant = constContainer.tokenRelationAST.tokenValueMapVariant;
                     for (let i = 0; i <= length - 1; ++i) {
 
                         let node = ast_outline[i];
+                        let next_node = ast_outline[i + 1];
 
                         // 根据当前节点的 Value 对当前节点Variant进行Diff。node.variant === node.value 表示当前节点的 variant 值还是当时创建的时候给的, 所以需要对它Diff
+                        if ("function" === tokenValueMapVariant[node.value] && next_node && "(" !== next_node.value) {
+
+                            continue;
+                        }
+
                         node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
                     }
                 },
@@ -1614,6 +1623,42 @@
                         }
                     },
 
+                    // 根据 lexicon 词汇类型, 生成 token node
+                    generateTokenNode(lexicon) {
+
+                        // {type:"",value:""}
+
+                        // 词汇是关键字
+                        let lexiconLowerCase = lexicon.toLocaleLowerCase();
+                        let keywordTable = tool.returnKeywordArray();
+                        if (keywordTable.indexOf(lexiconLowerCase) > -1) {
+
+                            return {type: "Keyword", value: lexiconLowerCase};
+                        }
+
+                        // 词汇是符号
+                        let symbolTable = constContainer.referenceTable.symbolTable;
+                        if (symbolTable[lexicon]) {
+
+                            return {type: "Punctuator", value: lexicon};
+                        }
+
+                        // 词汇是 String
+                        if (lexicon[0] === "'" || lexicon[0] === "\"") {
+
+                            return {type: "String", value: lexicon};
+                        }
+
+                        // 词汇是 Numeric
+                        if (!isNaN(lexicon)) {
+
+                            return {type: "Numeric", value: lexicon};
+                        }
+
+                        // 词汇是 Identifier
+                        return {type: "Identifier", value: lexicon};
+                    },
+
                     // 创建 token 表, 会合并部分目标单元
                     createTokenTable() {
 
@@ -1662,44 +1707,30 @@
                             node.index = token_arr.length - 1;
                         }
 
+                        // 检查并修复token表
+                        token_arr = this.afterCreateTokenTable.checkAndFixTokenTable(token_arr);
+
                         // token 表创建成功
                         globalVariableContainer.tokenTable = token_arr;
                     },
 
-                    // 根据 lexicon 词汇类型, 生成 token node
-                    generateTokenNode(lexicon) {
+                    afterCreateTokenTable: {
 
-                        // {type:"",value:""}
+                        checkAndFixTokenTable(token_arr) {
 
-                        // 词汇是关键字
-                        let lexiconLowerCase = lexicon.toLocaleLowerCase();
-                        let keywordTable = tool.returnKeywordArray();
-                        if (keywordTable.indexOf(lexiconLowerCase) > -1) {
+                            let length = token_arr.length;
+                            for (let i = 0; i <= length - 1; ++i) {
 
-                            return {type: "Keyword", value: lexiconLowerCase};
+                                let last_token = token_arr[i - 1];
+                                let token = token_arr[i];
+                                if (last_token && "." === last_token.value && "Keyword" === token.type) {
+
+                                    token.type = "Identifier";
+                                }
+                            }
+
+                            return token_arr;
                         }
-
-                        // 词汇是符号
-                        let symbolTable = constContainer.referenceTable.symbolTable;
-                        if (symbolTable[lexicon]) {
-
-                            return {type: "Punctuator", value: lexicon};
-                        }
-
-                        // 词汇是 String
-                        if (lexicon[0] === "'" || lexicon[0] === "\"") {
-
-                            return {type: "String", value: lexicon};
-                        }
-
-                        // 词汇是 Numeric
-                        if (!isNaN(lexicon)) {
-
-                            return {type: "Numeric", value: lexicon};
-                        }
-
-                        // 词汇是 Identifier
-                        return {type: "Identifier", value: lexicon};
                     }
                 },
 
@@ -2023,7 +2054,7 @@
                             if ("value" === property) {
 
                                 let lexicon = JSON.parse(JSON.stringify(obj.value));
-                                if (keyword_table.indexOf(lexicon) > -1) {
+                                if (keyword_table.indexOf(lexicon) > -1 && (!obj.token || "Keyword" === obj.token)) {
 
                                     // 如果是关键字, 或者是合并后的字符串是关键字( 后面的lexicon.split针对于如group by之类的 )
                                     lexicon = lexicon.toLocaleUpperCase();
