@@ -23,7 +23,7 @@
 
                 "'": 1001,
                 "\"": 1002,
-                // "`": 1003, 不再对 ` 字符作为分割字符(不会再把 ` 单独拆开)
+                "`": 1003, // 不再对 ` 字符作为分割字符(不会再把 ` 单独拆开)
                 ",": 1004,
                 ";": 1005,
                 "(": 1006,
@@ -658,6 +658,20 @@
             // function replacePos(text, start, stop, replace_text) { return text.substring(0, stop) + replace_text + text.substring(stop + 1); }
 
             for (let i = 0; str[i];) {
+
+                if (["'", '"', "`"].indexOf(str[i]) > -1) {
+
+                    // 跳过, 跳到下一个非 ["'", '"', "`"] 字符为止
+                    let j, boundary = str[i];
+                    for (j = i + 1; str[j]; ++j) {
+
+                        if (boundary === str[j]) {
+
+                            break;
+                        }
+                    }
+                    i = j + 1;
+                }
 
                 // 发现符号
                 let index = except_chars.indexOf(str[i]);
@@ -1571,8 +1585,8 @@
                         delete breakpoint_obj['*']; // delete breakpoint_arr['.'];
                         delete breakpoint_obj['"'];
                         delete breakpoint_obj["'"];
+                        delete breakpoint_obj["`"];
                         let breakpoint_arr = tool.objectPropertyToArray(breakpoint_obj);
-
                         globalVariableContainer.sql_cleared = tool.insertWhiteSpaceInExceptChars(sql, breakpoint_arr);
                     },
 

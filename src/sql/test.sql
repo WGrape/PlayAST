@@ -104,3 +104,8 @@ FROM access_log
 LEFT JOIN db.test
 GROUP BY site_id ;
 
+
+SELECT Websites.name , COUNT( access_log.aid ) AS 'nums . sd'
+FROM access_log
+LEFT JOIN Websites ON access_log.site_id = Websites.id
+GROUP BY Websites.name ;
