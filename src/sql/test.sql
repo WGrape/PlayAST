@@ -61,6 +61,9 @@ select *, count(*) from (
 )
 
 
+select (productid).dsds.dsdsds.dsdsds.dsds , avg( orderqty ) as averagequantity , sum( linetotal ) as total from sales.salesorderdetail group by productid having sum( linetotal ) > $1000000.00 and avg( orderqty ) < 3 ;
+
+
 
 SELECT *
 FROM

@@ -9,6 +9,8 @@
  * 7. 对 variant 属性 , value 属性的使用不太简单清晰，有点乱
  * 8. index 全部节点都有, token 只有 expression 有
  * 9. 关键字必须使用转义字符 ` , 不支持自动识别 : 如 select count ... from 此时不会自动识别 count 为 identifier
+ * 10. 单纯的语法检查的话，其实不应该有那么多语义相关的判断: 如 数据库名.数据表名.字段名 , 单纯语法检查的话，是不会管到底往下写了多少个 : a.b.c.d.e.f ....
+ * 11. 处理多个SQL的情况, 处理不必要的逗号
  * Author:Lvsi
  */
 (function () {
@@ -124,7 +126,9 @@
                 "Punctuator": 5002,
                 "Numeric": 5003,
                 "String": 5004,
-            }
+            },
+
+            operatorTable: ["<", ">", "=", "<=", ">=", "!=", "<>"],
         },
 
         /**
@@ -561,7 +565,6 @@
             return arr;
         },
 
-
         // 根据属性把一个数组转成一个新数组
         arrayToNewArrayByProperty(arr, property, callback = () => true) {
 
@@ -794,6 +797,40 @@
             }
 
             throw tool.makeErrorObj(false, "Not " + n + "th match right bracket");
+        },
+
+        getStrLastNthCharIndex(str, ch, n) {
+
+            let length = str.length, times = 0;
+            for (let i = length - 1; str[i]; --i) {
+
+                if (ch === str[i]) {
+
+                    ++times;
+                }
+
+                if (n === times) {
+
+                    return i;
+                }
+            }
+
+            throw tool.makeErrorObj(false, "No last " + n + "th char in " + str);
+        },
+
+        // 获取下一个目标字符的下标
+        getStrNextTargetCharIndex(str, target, from = 0) {
+
+            let i;
+            for (i = from; str[i]; ++i) {
+
+                if (target === str[i]) {
+
+                    return i;
+                }
+            }
+
+            throw tool.makeErrorObj(false, "No next " + target + " in " + str);
         },
 
         // 获取子查询个数
@@ -1376,7 +1413,7 @@
                             ++left_bracket_num;
                         } else if (")" === ast_outline[i].value) {
 
-                            --left_bracket_num;
+                            --left_bracket_num; // Todo : 这种匹配法可能有bug
                         }
 
 
@@ -1436,6 +1473,10 @@
                             "right_bracket" === ast_outline[j].variant && delete ast_outline[j]; // 把右括号删掉
                             ast_outline[i] = node_function;
                             i = j;
+                        } else if (constContainer.referenceTable.operatorTable.indexOf(ast_outline[i].value) > -1 && ast_outline[i + 1] && "(" === ast_outline[i + 1].value) {
+
+                            // 运算符后面跟了括号
+
                         } else if ("Keyword" !== ast_outline[i].token && ast_outline[i + 1] && "(" === ast_outline[i + 1].value) {
 
                             // 疑似函数, 但此并不是支持的函数
@@ -1570,6 +1611,39 @@
                         preClearBoundarySymbol(sql) {
 
                             // 处理不必要的括号
+                            // 如果不是函数, 不是子查询 则就是不必要的括号
+                            // 函数的区分方式是 当前字符是(, 且前面的字符不是空格, 是一个字符
+                            // 子查询区分方式是 当前字符是(, 且前面的字符是空格
+                            let j;
+                            for (let i = 0; sql[i]; ++i) {
+
+                                if ("(" === sql[i]) {
+
+                                    if (" " === sql[i - 1]) {
+
+                                        // 向左搜到第一个不为空格的字符为止
+                                        for (j = i - 1; " " === sql[j]; ++j) {
+                                        }
+
+                                        // 是子查询
+                                        if ("from" === sql.slice(j - 3, j + 1).toLocaleLowerCase()) {
+
+                                            continue;
+                                        }
+                                    } else if (" " !== sql[i - 1]) {
+
+                                        // 函数 不做处理
+                                        continue;
+                                    }
+
+                                    // 删除掉无用的括号
+                                    sql = tool.strReplacePos(sql, i, i, " ");
+
+                                    // 找到下一个右括号并删除
+                                    j = tool.getStrNextTargetCharIndex(sql, ")", i);
+                                    sql = tool.strReplacePos(sql, j, j, " ");
+                                }
+                            }
 
                             return sql;
                         },
