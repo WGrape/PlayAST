@@ -113,6 +113,12 @@ GROUP BY Websites.name ;
 
 insert into test.test ( " age" , " _test" ) values ( 32, " hx _ ds " );
 
+insert into test.test values ( 32, "hx _ ds " );
+
+UPDATE test SET name = "dsds", age = 87 where id > 9 ;
+
+
+UPDATE test SET name = "dsds", age > 87 where id > 9 ;
 
 select * from ( select * from ( select productid , avg( orderqty ) as averagequantity , sum( linetotal ) as total from sales.salesorderdetail group by productid having sum( linetotal ) > $1000000.00 and avg( orderqty ) < 3 ) ) ;
 

@@ -1023,17 +1023,17 @@
 
                     let grouping_for_map = {
 
-                        "select": this.understandColumnList,
+                        "select": (columns) => this.understandColumnList(columns, "select"),
 
-                        "insert": this.understandTableList,
-                        "from": this.understandTableList,
-                        "update": this.understandTableList,
+                        "insert": (tables) => this.understandTableList(tables, "insert"),
+                        "from": (tables) => this.understandTableList(tables, "from"),
+                        "update": (tables) => this.understandTableList(tables, "update"),
 
                         "values": this.understandValueList,
 
-                        "where": this.understandWhereExprList,
-                        "set": this.understandWhereExprList,
-                        "having": this.understandWhereExprList,
+                        "where": (items) => this.understandWhereExprList(items, "where"),
+                        "set": (items) => this.understandWhereExprList(items, "set"),
+                        "having": (items) => this.understandWhereExprList(items, "having"),
 
                         "group by": this.understandGroupByExprList,
                         "order by": this.understandOrderByExprList,
@@ -1168,10 +1168,10 @@
                     tool.pruningAST.sensing.understandWhereExprList(columns, "join");
                 },
 
-                understandColumnList(columns, orderby = false) {
+                understandColumnList(columns, clause = "select") {
 
                     let length = columns.length;
-                    if (length < 1) {
+                    if ("insert" !== globalVariableContainer.statement_type && length < 1) {
 
                         throw tool.makeErrorObj(false, "column must be not empty");
                     }
@@ -1182,7 +1182,7 @@
                         let pre_column = columns[i - 1];
                         let column = columns[i];
 
-                        if (orderby && "sort" === column.variant) {
+                        if ("order by" === clause && "sort" === column.variant) {
 
                             continue;
                         } else if ("object operator" === column.variant) {
@@ -1209,7 +1209,7 @@
 
                     // 使用正则验证一下
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)+$/g);
-                    if (false === orderby && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
+                    if (false === "order by" === clause && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
 
                         throw tool.makeErrorObjOfRegError(columns, "column list error");
                     }
@@ -1217,15 +1217,15 @@
 
                 understandWhereExprList(items, clause = "where") {
 
-                    let operator_num = 0, operatorOnlyEqual = ("update" === globalVariableContainer.statement_type);
+                    let operator_num = 0;
                     let length = items.length;
                     for (let i = 0; i <= length - 1; ++i) {
 
                         let item = items[i];
 
-                        if (operatorOnlyEqual && "operator" === item.variant && "=" !== item.value) {
+                        if ("set" === clause && "operator" === item.variant && "=" !== item.value) {
 
-                            throw tool.makeErrorObjOfRegError(item, "operator error, only equal operator");
+                            throw tool.makeErrorObjOfRegError(item, "operator error, set clause must be equal operator");
                         }
 
                         // 运算符和间断符
@@ -1254,13 +1254,13 @@
                     let reg = new RegExp(/^((\s*left)*(\s*operator)*(\s*right)*\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/);
                     if (!reg.test(tool.arrayToNewArrayByProperty(items, "variant").join(" "))) {
 
-                        throw tool.makeErrorObjOfRegError(items, operatorOnlyEqual ? "Set clause error" : clause + " error");
+                        throw tool.makeErrorObjOfRegError(items, clause + " list error");
                     }
                 },
 
                 understandOrderByExprList(first) {
 
-                    tool.pruningAST.sensing.understandColumnList(first, true);
+                    tool.pruningAST.sensing.understandColumnList(first, "order by");
 
                     // 使用正则验证一下
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)+$/g);
