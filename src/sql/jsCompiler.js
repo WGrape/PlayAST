@@ -1595,6 +1595,9 @@
 
                         preClearMixResolving(sql) {
 
+                            // 不能出现不支持的字符
+
+
                             // 处理分号
                             sql = sql.trim().replace(";", "");
                             if (";" !== sql[sql.length - 1]) {
@@ -1655,11 +1658,7 @@
                         let sql = this.preClear.doing();
 
                         // 对SQL中的目标字符两侧添加空白符
-                        let breakpoint_obj = constContainer.referenceTable.symbolTable;
-                        delete breakpoint_obj['*']; // delete breakpoint_arr['.'];
-                        delete breakpoint_obj['"'];
-                        delete breakpoint_obj["'"];
-                        delete breakpoint_obj["`"];
+                        let breakpoint_obj = constContainer.referenceTable.symbolTable; // delete breakpoint_obj['*']; // delete breakpoint_arr['.']; // delete breakpoint_obj['"']; // delete breakpoint_obj["'"]; // delete breakpoint_obj["`"];
                         let breakpoint_arr = tool.objectPropertyToArray(breakpoint_obj);
                         globalVariableContainer.sql_cleared = tool.insertWhiteSpaceInExceptChars(sql, breakpoint_arr);
                     },
@@ -1671,12 +1670,12 @@
                         // 先跳过引号和转义号包着的字符串
                         let length = sql.length;
                         let sql_lexicon_arr = [];
-                        let quotes = ["'", '"', "`"];
+                        let quotes = ["'", '"', "`", "["];
                         let left, leftChar, right, rightChar;
                         for (let i = 0; i <= length - 1;) {
 
                             left = i;
-                            leftChar = sql[i];
+                            leftChar = (sql[i] === "[") ? "]" : sql[i];
 
                             // 当前字符是引号
                             if (quotes.indexOf(sql[i]) > -1) {
