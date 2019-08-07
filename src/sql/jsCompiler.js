@@ -11,6 +11,8 @@
  * 9. 关键字必须使用转义字符 ` , 不支持自动识别 : 如 select count ... from 此时不会自动识别 count 为 identifier
  * 10. 单纯的语法检查的话，其实不应该有那么多语义相关的判断: 如 数据库名.数据表名.字段名 , 单纯语法检查的话，是不会管到底往下写了多少个 : a.b.c.d.e.f ....
  * 11. 处理多个SQL的情况(只取第一个SQL，不支持多个SQL), 处理不必要的逗号
+ * 12. 只要是括号匹配目前都可能有bug
+ * 13. str[i] 替代 i<=length -1
  * Author:Lvsi
  */
 (function () {
@@ -842,6 +844,28 @@
             throw tool.makeErrorObj(false, "No next " + target + " in " + str);
         },
 
+        // 获取字符串中匹配的右括号的下标
+        getStrMatchedRightBracketIndex(str, from = 0) {
+
+            let stack = [];
+
+            for (let i = from; str[i]; ++i) {
+
+                if ("(" === str[i]) {
+
+                    stack.push(str[i]);
+                } else if (")" === str[i] && stack.length === 0) {
+
+                    return i;
+                } else if (")" === str[i] && "(" === stack[stack.length - 1]) {
+
+                    stack.pop();
+                }
+            }
+
+            throw tool.makeErrorObj(false, "No matched right bracket" + " in " + str);
+        },
+
         // 获取子查询个数
         getSubQueryNum() {
 
@@ -1059,7 +1083,7 @@
 
                             this.sensingGroupingSpeciallyForInsert(node);
                             continue;
-                        } else if (node['for'].indexOf("join") > -1) {
+                        } else if (node['for'] && node['for'].indexOf("join") > -1) {
 
                             this.sensingGroupingSpeciallyForJoin(node);
                             continue;
@@ -1209,9 +1233,9 @@
 
                     // 使用正则验证一下
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)+$/g);
-                    if (false === "order by" === clause && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
+                    if ("order by" !== clause && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
 
-                        throw tool.makeErrorObjOfRegError(columns, "column list error");
+                        throw tool.makeErrorObjOfRegError(columns, clause + " clause error");
                     }
                 },
 
@@ -1254,7 +1278,7 @@
                     let reg = new RegExp(/^((\s*left)*(\s*operator)*(\s*right)*\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/);
                     if (!reg.test(tool.arrayToNewArrayByProperty(items, "variant").join(" "))) {
 
-                        throw tool.makeErrorObjOfRegError(items, clause + " list error");
+                        throw tool.makeErrorObjOfRegError(items, clause + " clause error");
                     }
                 },
 
@@ -1266,7 +1290,7 @@
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)+$/g);
                     if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
 
-                        throw tool.makeErrorObjOfRegError(first, "order by column error");
+                        throw tool.makeErrorObjOfRegError(first, "order by clause error");
                     }
                 },
 
@@ -1354,7 +1378,7 @@
 
                         } else {
 
-                            throw tool.makeErrorObj(number.index, "limit error");
+                            throw tool.makeErrorObj(number.index, "limit clause error");
                         }
                     }
 
@@ -1362,7 +1386,7 @@
                     let reg = new RegExp(/^\s*Numeric(|\srecursive\sNumeric)$/);
                     if (!reg.test(tool.arrayToNewArrayByProperty(numbers, "variant").join(" "))) {
 
-                        throw tool.makeErrorObjOfRegError(numbers, "limit list error");
+                        throw tool.makeErrorObjOfRegError(numbers, "limit clause error");
                     }
                 },
             },
@@ -1370,7 +1394,7 @@
             // 折叠函数
             collapsing: {
 
-                // 折叠出 Subquery 节点
+                // 折叠出 Grouping 类型的节点
                 collapsingGroupingTypeNode(root, sub_query_level) {
 
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
@@ -1408,29 +1432,46 @@
                     }
                 },
 
-                // 折叠出 Grouping 类型的节点
+                // 折叠出 Subquery 节点
                 collapsingSubqueryTypeNode(root, sub_query_level) {
 
                     // 整理出来 Subquery, Grouping 之类的
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
-                    let length = ast_outline.length, left_bracket_num = 0, start, end;
+                    let length = ast_outline.length;
 
                     for (let i = 0; i <= length - 1 && ast_outline[i] && ast_outline[i].value; ++i) {
-
-                        if ("(" === ast_outline[i].value) {
-
-                            ++left_bracket_num;
-                        } else if (")" === ast_outline[i].value) {
-
-                            --left_bracket_num; // Todo : 这种匹配法可能有bug
-                        }
-
 
                         // 如果出现子查询, 则全部都加到query中
                         if ("(" === ast_outline[i].value && ast_outline[i - 1] && ast_outline[i - 1].value === "from") {
 
-                            start = i;
-                            end = tool.getLastNthRightBracketASTIndex(left_bracket_num);
+
+                            let stack = [], end = -1;
+                            for (let j = i + 1; ast_outline[j]; ++j) {
+
+                                if ("(" === ast_outline[j].value) {
+
+                                    stack.push("(");
+                                } else if (")" === ast_outline[j].value && stack.length === 0) {
+
+                                    end = j - 1;
+                                    break;
+                                } else if (")" === ast_outline[j].value && "(" === stack[stack.length - 1]) {
+
+                                    stack.pop();
+                                }
+
+                                if (!ast_outline[j + 1]) {
+
+                                    end = j;
+                                    break;
+                                }
+                            }
+
+                            if (end < 0) {
+
+                                throw tool.makeErrorObj(false, "No match Subquery");
+                            }
+
                             let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
 
                             // 把所有连续的 expression 都打入 node_subquery 中
@@ -2192,7 +2233,8 @@
 
                                 ++enters;
                                 indent -= 4;
-                                sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
+                                // sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
+                                sql = sql + "\n" + tool.makeContinuousStr(indent);
                             } else if ("function" === property) {
 
                                 sql = sql + " " + ")";
