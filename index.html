@@ -132,7 +132,7 @@ limit 0 , 32
 
         sql_review_obj.text(sql);
 
-        sql_review_obj.SQLCompiler(sql);
+        sql_review_obj.SQLCompiler({statement: 4, sql: sql});
 
         let result = sql_review_obj.SQLCompilerAPI.steps.syntacticAnalysis.getASTOutlinePruned();
         let input = eval('(' + JSON.stringify(result) + ')');

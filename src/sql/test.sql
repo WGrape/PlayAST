@@ -78,9 +78,6 @@ FROM
     )
 ) ;
 
-
-select A.customer_id,B.market_info_id,B.pic,B.address,B.latitude,B.longitude from merchandiser A inner join market B on A.market_id=B.id where A.status=1 and B.status=1 and B.id != 18 and B.market_info_id=32
-
 SELECT site_id , count, SUM( access_log.COUNT ) AS "nums hehe" FROM access_log GROUP BY site_id ;
 
 SELECT site_id , SUM( access_log.count ) AS "nums hehe" FROM access_log GROUP BY site_id ;
@@ -112,3 +109,10 @@ SELECT Websites.name , COUNT( access_log.aid ) AS 'nums . sd'
 FROM access_log
 LEFT JOIN Websites ON access_log.site_id = Websites.id
 GROUP BY Websites.name ;
+
+
+insert into test.test ( " age" , " _test" ) values ( 32, " hx _ ds " );
+
+
+select * from ( select * from ( select productid , avg( orderqty ) as averagequantity , sum( linetotal ) as total from sales.salesorderdetail group by productid having sum( linetotal ) > $1000000.00 and avg( orderqty ) < 3 ) ) ;
+

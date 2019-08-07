@@ -10,7 +10,7 @@
  * 8. index 全部节点都有, token 只有 expression 有
  * 9. 关键字必须使用转义字符 ` , 不支持自动识别 : 如 select count ... from 此时不会自动识别 count 为 identifier
  * 10. 单纯的语法检查的话，其实不应该有那么多语义相关的判断: 如 数据库名.数据表名.字段名 , 单纯语法检查的话，是不会管到底往下写了多少个 : a.b.c.d.e.f ....
- * 11. 处理多个SQL的情况, 处理不必要的逗号
+ * 11. 处理多个SQL的情况(只取第一个SQL，不支持多个SQL), 处理不必要的逗号
  * Author:Lvsi
  */
 (function () {
@@ -445,7 +445,7 @@
                 ",": "recursive",
                 "and": "recursive",
                 "&&": "recursive",
-                // "*": "all columns",
+                "*": "column",
                 ".": "object operator",
                 // "on": "",
 
@@ -477,6 +477,15 @@
          */
         debug: false,
         debug_id: 1,
+
+        /**
+         *
+         */
+        config: {
+
+            statement: 1, // 1:只支持增, 2:支持增删, 3:支持增删查, 4:支持增删查改
+            sql: "",
+        },
 
         /**
          * SQL解析情况
@@ -1473,11 +1482,9 @@
                             "right_bracket" === ast_outline[j].variant && delete ast_outline[j]; // 把右括号删掉
                             ast_outline[i] = node_function;
                             i = j;
-                        } else if (constContainer.referenceTable.operatorTable.indexOf(ast_outline[i].value) > -1 && ast_outline[i + 1] && "(" === ast_outline[i + 1].value) {
+                        }
 
-                            // 运算符后面跟了括号
-
-                        } else if ("Keyword" !== ast_outline[i].token && ast_outline[i + 1] && "(" === ast_outline[i + 1].value) {
+                        if ("insert" !== globalVariableContainer.statement_type && ast_outline[i] && "Keyword" !== ast_outline[i].token && ast_outline[i + 1] && "(" === ast_outline[i + 1].value) {
 
                             // 疑似函数, 但此并不是支持的函数
                             throw tool.makeErrorObj(ast_outline[i].index, ast_outline[i].value + "不是所支持的函数");
@@ -1499,9 +1506,11 @@
         constContainer.referenceTable.keywordTable.supportFunctions
     );
 
-    let SQLCompiler = function (sql = "") {
+    let SQLCompiler = function (config = {sql: ""}) {
 
-        globalVariableContainer.sql = sql;
+
+        globalVariableContainer.config = Object.assign({sql: ""}, config);
+        globalVariableContainer.sql = config.sql;
     };
 
     let debugMsg = function (msg = "", color = "color:black", level = 0) {
@@ -1596,9 +1605,11 @@
                         preClearMixResolving(sql) {
 
                             // 不能出现不支持的字符
+                            let not_allowed_chars = [];
 
 
                             // 处理分号
+                            sql = sql.split(";")[0];
                             sql = sql.trim().replace(";", "");
                             if (";" !== sql[sql.length - 1]) {
 
@@ -1624,15 +1635,31 @@
 
                                     if (" " === sql[i - 1]) {
 
-                                        // 向左搜到第一个不为空格的字符为止
-                                        for (j = i - 1; " " === sql[j]; ++j) {
+                                        // 判断是否是子查询 : 向左搜到第一个不为空格的字符为止
+                                        for (j = i - 1; " " === sql[j]; --j) {
                                         }
-
-                                        // 是子查询
                                         if ("from" === sql.slice(j - 3, j + 1).toLocaleLowerCase()) {
 
                                             continue;
                                         }
+
+                                        // 判断是否是values插入操作 :
+                                        // 从下一个匹配的右括号开始向右找到第一个不为空格的字符为止
+                                        for (j = tool.getStrNextTargetCharIndex(sql, ")", i) + 1; " " === sql[j]; ++j) {
+                                        }
+                                        if ("values" === sql.slice(j, j + 6).toLocaleLowerCase()) {
+
+                                            continue;
+                                        }
+                                        // 从当前字符开始向左搜到第一个不为空格的字符为止
+                                        for (j = i - 1; " " === sql[j]; --j) {
+                                        }
+                                        if ("values" === sql.slice(j - 5, j + 1).toLocaleLowerCase()) {
+
+                                            continue;
+                                        }
+
+
                                     } else if (" " !== sql[i - 1]) {
 
                                         // 函数 不做处理
@@ -1888,6 +1915,25 @@
                                 globalVariableContainer.sql_error_msg = msg;
                                 throw tool.makeErrorObj(false, "只支持CURD操作");
                         }
+
+                        let allow = {
+
+                            1: ["insert"],
+
+                            2: ["insert", "delete"],
+                            20: ["delete"], // 只支持删
+
+                            3: ["insert", "delete", "select"],
+                            30: ["select"],
+
+                            4: ["insert", "delete", "select", "update"],
+                            40: ["update"],
+                        };
+
+                        if (allow[globalVariableContainer.config.statement].indexOf(globalVariableContainer.statement_type) < 0) {
+
+                            throw tool.makeErrorObj(false, "设置的 statement 级别不支持 " + globalVariableContainer.statement_type + " 操作");
+                        }
                     },
 
                     createASTOutline() {
@@ -1971,11 +2017,11 @@
     // 扩展JQuery
     $.fn.extend({
 
-        SQLCompiler: function (sql = "") {
+        SQLCompiler: function (config = {sql: ""}) {
 
             return $(this).each(function () {
 
-                (new SQLCompiler(sql)).init();
+                (new SQLCompiler(config)).init();
             });
         },
 
@@ -1985,6 +2031,8 @@
             testing(sql = "") {
 
                 let compiler = SQLCompiler.prototype.compile.steps;
+                globalVariableContainer.config.statement = 4;
+                globalVariableContainer.config.sql = sql;
                 globalVariableContainer.sql = sql;
                 globalVariableContainer.debug = true;
 
