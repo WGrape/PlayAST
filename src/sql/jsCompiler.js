@@ -2314,8 +2314,8 @@
                             if ("subquery" === property) {
 
                                 indent -= 4;
-                                // sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
-                                sql = sql + "\n" + tool.makeContinuousStr(indent);
+                                sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
+                                // sql = sql + "\n" + tool.makeContinuousStr(indent);
                                 ++enters;
                             } else if ("union" === property || "union all" === property) {
 
