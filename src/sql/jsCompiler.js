@@ -106,6 +106,18 @@
                     "distinct": "function",
                     "from_unixtime": "function",
 
+                    "mid": "function",
+                    "len": "function",
+
+                    "first": "function",
+                    "last": "function",
+
+                    "ucase": "function",
+                    "lcase": "function",
+
+                    "round": "function",
+                    "format": "function",
+
                     "concat": "function",
                     "length": "function",
                     "char_length": "function",
