@@ -18,21 +18,25 @@ PlayAST : Play With Abstract Syntax Tree
 
 ## 实现
 
-#### SQL AST
+### 1. SQL AST
 
-运行 ```index.html``` 代码查看demo。 
+起初是因为需要做前端SQL语法检查，故而最先选择了 SQL AST 用 JS 实现，并提供了 Debug 以调试解析过程中的详细处理。
+运行 ```index.html``` 可以查看demo，SQL AST 核心可查看源码：```PlayAST/src/sql/jsCompiler.js```，[点击查看](./src/sql/jsCompiler.js) 。
 
-```
-目前支持功能: 
+#### 可支持的功能列表
 1. SQL语法检查
 2. SQL代码格式化(格式化)
 3. 通过AST树可以开发更多的特性 ...
-```
 
-起初是因为需要做前端SQL语法检查，故而最先选择了 SQL AST 用 JS 实现，并提供了 Debug 以调试解析过程中的详细处理 。具体查看源码：```PlayAST/src/sql/jsCompiler.js```，[点击查看](./src/sql/jsCompiler.js) 。
+#### 可支持的SQL语法列表
+1. 子查询(最多3层)
+2. UNION 和 UNION ALL(最多3层)
+3. 支持 INSERT, DELETE, SELECT, UPDATE 4种操作 
+4. 查询支持 *, AS, (LEFT,RIGHT,INNER)JOIN, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT
+5. 运算符支持 LIKE, >, =, <, >=, <=, !=, <>, IS NULL 
+6. 函数支持 distinct, count, from_unixtime, avg, sum, max, min, round, mid, len, first, last, format, concat, length, char_length, upper, lower, year, now
 
-<br>
-
+#### 示例
 <img src="./extra/images/demo-sql-js.gif" width="700px">
 
 ## 参考
