@@ -78,6 +78,7 @@
                     "as": 20021,
                     "having": 20022,
                     "union": 20023,
+                    "is": 20024,
                 },
 
                 updateStatement: {
@@ -464,6 +465,9 @@
                 "!=": "operator",
                 "<>": "operator",
                 "like": "operator",
+                "is": "operator",
+
+                "null": "Numeric",
 
                 ";": "close",
                 "(": "left_bracket",
@@ -579,6 +583,8 @@
                     }
                 }
             }
+
+            arr.push("null");
 
             return arr;
         },
@@ -931,12 +937,14 @@
 
                     if (item && item.subquery) {
 
-                        ast_outline = item.subquery;break;
+                        ast_outline = item.subquery;
+                        break;
                     }
 
                     if (item && item.union) {
 
-                        ast_outline = item.union;break;
+                        ast_outline = item.union;
+                        break;
                     }
                 }
             }
@@ -1524,9 +1532,9 @@
                                 end = length - 1,
                                 node_subquery = {type: "union", union: [], union_level: union_level};
 
-                            if(ast_outline[i + 1] && "all" === ast_outline[i + 1].value){
+                            if (ast_outline[i + 1] && "all" === ast_outline[i + 1].value) {
 
-                                start = i+2;
+                                start = i + 2;
                                 node_subquery.type = "union all"
                             }
 
@@ -2273,14 +2281,14 @@
 
                             if ("subquery" === property) {
 
-                                ++enters;
                                 sql = sql + "\n" + tool.makeContinuousStr(indent) + "(";
                                 indent += 4;
-                            } else if ("union" === property) {
-
                                 ++enters;
+                            } else if ("union" === property || "union all" === property) {
+
                                 sql = sql + "\n" + tool.makeContinuousStr(indent) + obj['type'].toLocaleUpperCase();
                                 indent += 4;
+                                ++enters;
                             } else if ("function" === property) {
 
                                 sql = sql + " " + obj['function_name'].toLocaleUpperCase() + "(";
@@ -2293,11 +2301,17 @@
 
                             if ("subquery" === property) {
 
-                                ++enters;
                                 indent -= 4;
                                 // sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
                                 sql = sql + "\n" + tool.makeContinuousStr(indent);
-                            }else if ("function" === property) {
+                                ++enters;
+                            } else if ("union" === property || "union all" === property) {
+
+                                indent -= 4;
+                                // sql = sql + "\n" + tool.makeContinuousStr(indent);
+                                // sql = sql + "\n" + tool.makeContinuousStr(indent);
+                                ++enters;
+                            } else if ("function" === property) {
 
                                 sql = sql + " " + ")";
                             }

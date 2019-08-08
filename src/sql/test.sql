@@ -101,8 +101,16 @@ SELECT * FROM ( SELECT * FROM ( SELECT * FROM d1.test t1, t3 LEFT JOIN d2.test2 
 select *, id, name from ( select *, id, name from ( select *,name from d1.test t1 , t3 left join d2.test2 on t1.uid = t2.id where id > 0 and name = "kidel" limit 0 , 32 ) AS B ) as A ;
 
 
-
-
 select e_name from employees_china union select e_name from employees_usa
+select e_name from employees_china union all select e_name from employees_usa
+
+SELECT * FROM ( SELECT e_name FROM employees_china UNION ALL SELECT e_name FROM employees_usa all WHERE name is null ) ;
+
+
+
+select * from ( select e_name from employees_china union all select e_name from employees_usa )
+
 select e_name from employees_china union select e_name from employees_usa union select e_name from employees_usa
+
+SELECT from_unixtime(e_name) FROM employees_china UNION ALL SELECT e_name FROM employees_usa UNION SELECT e_name FROM employees_usa ; all
 
