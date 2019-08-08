@@ -1,9 +1,10 @@
 /**
+ * Tip:
+ *
  * Todo:
  * 1. 默认不格式化SQL(格式化SQL会加长执行时间)
  * 2. 缺少 对 函数 的友好支持
  * 3. 字段名函数名等 identifier 被误认为关键字的bug
- * 4. DISTINCT, UNION ALL
  * 5. 不怕输入任何的括号, 因为在词法分析阶段, 就会把那些不必要的括号都删除掉, 只留下必要的括号, 这样也方便后续处理。
  * 6. NULL 的处理
  * 7. 对 variant 属性 , value 属性的使用不太简单清晰，有点乱
@@ -76,6 +77,7 @@
                     "asc": 20020,
                     "as": 20021,
                     "having": 20022,
+                    "union": 20023,
                 },
 
                 updateStatement: {
@@ -100,6 +102,9 @@
                 supportFunctions: {
 
                     // 值不同于上面, 这里的函数值必须写function, 因为要赋值到 tokenValueMapVariant 中
+                    "distinct": "function",
+                    "from_unixtime": "function",
+
                     "concat": "function",
                     "length": "function",
                     "char_length": "function",
@@ -487,6 +492,7 @@
 
             statement: 1, // 1:只支持增, 2:支持增删, 3:支持增删查, 4:支持增删查改
             sql: "",
+            format: false, // 是否格式化SQL
         },
 
         /**
@@ -543,10 +549,11 @@
                 }
             }
 
-            msg = msg + "(" + e.msg + ")";
+            msg = ("[ " + e.msg + " ] ").toLocaleUpperCase() + msg;
 
             // 解析失败
-            console.error(msg); // alert("解析失败 : " + e.message);
+            // console.error(msg); // alert("解析失败 : " + e.message);
+            throw msg;
         },
 
         combineObjectToObject(obj, _obj) {
@@ -896,16 +903,18 @@
 
             function getASTOutlineOfSubQueryLevel2(root) {
 
-                let ast_outline;
                 for (let item of root.children) {
 
                     if (item && item.subquery) {
 
-                        ast_outline = item.subquery;
+                        return item.subquery;
+                    }
+
+                    if (item && item.union) {
+
+                        return item.union;
                     }
                 }
-
-                return ast_outline;
             }
 
             let ast_outline;
@@ -922,7 +931,12 @@
 
                     if (item && item.subquery) {
 
-                        ast_outline = item.subquery;
+                        ast_outline = item.subquery;break;
+                    }
+
+                    if (item && item.union) {
+
+                        ast_outline = item.union;break;
                     }
                 }
             }
@@ -943,6 +957,9 @@
 
                 // 然后 collapsing
                 this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
+                root = this.collapsing.rebuildASTIndex(root);
+
+                this.collapsing.collapsingUnionTypeNode(root, sub_query_level);
                 root = this.collapsing.rebuildASTIndex(root);
 
                 this.collapsing.collapsingFunctionTypeNode(root, sub_query_level);
@@ -1049,11 +1066,11 @@
 
                         "select": (columns) => this.understandColumnList(columns, "select"),
 
-                        "insert": (tables) => this.understandTableList(tables, "insert"),
+                        // "insert": (tables) => this.understandTableList(tables, "insert"),
                         "from": (tables) => this.understandTableList(tables, "from"),
                         "update": (tables) => this.understandTableList(tables, "update"),
 
-                        "values": this.understandValueList,
+                        // "values": this.understandValueList,
 
                         "where": (items) => this.understandWhereExprList(items, "where"),
                         "set": (items) => this.understandWhereExprList(items, "set"),
@@ -1154,7 +1171,7 @@
                         is_target && columns.push(column);
                     }
 
-                    tool.pruningAST.sensing.understandColumnList(columns);
+                    tool.pruningAST.sensing.understandColumnList(columns, "insert");
                 },
 
                 sensingGroupingSpeciallyForJoin(node) {
@@ -1232,7 +1249,7 @@
                     }
 
                     // 使用正则验证一下
-                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*)*)\s*)+$/g);
+                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*){1,2})\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*){1,2})\s*)+$/g);
                     if ("order by" !== clause && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
 
                         throw tool.makeErrorObjOfRegError(columns, clause + " clause error");
@@ -1296,7 +1313,7 @@
 
                 understandGroupByExprList(first) {
 
-                    tool.pruningAST.sensing.understandColumnList(first);
+                    tool.pruningAST.sensing.understandColumnList(first, "group by");
 
                     // 使用正则验证一下
                     let reg = new RegExp(/^\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*$/g);
@@ -1412,7 +1429,7 @@
                             let j = i;
                             while (j <= length - 1 && "close" !== ast_outline[j].variant && ("function" === ast_outline[j].type || "expression" === ast_outline[j].type)) {
 
-                                if ("limit" === pre_node.value && ["Numeric", "Punctuator"].indexOf(ast_outline[j].token) < 0 && "," !== ast_outline[j].value) {
+                                if (pre_node && "limit" === pre_node.value && ["Numeric", "Punctuator"].indexOf(ast_outline[j].token) < 0 && "," !== ast_outline[j].value) {
 
                                     ++j;
                                     continue;
@@ -1439,12 +1456,12 @@
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     let length = ast_outline.length;
 
-                    for (let i = 0; i <= length - 1 && ast_outline[i] && ast_outline[i].value; ++i) {
+                    for (let i = 0; ast_outline[i] && ast_outline[i].value; ++i) {
 
                         // 如果出现子查询, 则全部都加到query中
                         if ("(" === ast_outline[i].value && ast_outline[i - 1] && ast_outline[i - 1].value === "from") {
 
-
+                            // 找出 end 节点
                             let stack = [], end = -1;
                             for (let j = i + 1; ast_outline[j]; ++j) {
 
@@ -1466,20 +1483,60 @@
                                     break;
                                 }
                             }
-
                             if (end < 0) {
 
                                 throw tool.makeErrorObj(false, "No match Subquery");
                             }
 
-                            let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
-
                             // 把所有连续的 expression 都打入 node_subquery 中
+                            let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
                             for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
 
                                 if (ast_outline[i].index !== ast_outline[j].index) {
 
                                     node_subquery.subquery.push(ast_outline[j]);
+                                    delete ast_outline[j];
+                                } else {
+
+                                    delete ast_outline[j];
+                                    break;
+                                }
+                            }
+                            ast_outline[i] = node_subquery;
+                        }
+                    }
+                },
+
+                // 折叠出 UNION 节点
+                collapsingUnionTypeNode(root, union_level) {
+
+                    // 整理出来 Subquery, Grouping 之类的
+                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, union_level);
+                    let length = ast_outline.length;
+
+                    for (let i = 0; ast_outline[i] && ast_outline[i].value; ++i) {
+
+                        // 如果出现子查询, 则全部都加到query中
+                        if ("union" === ast_outline[i].value) {
+
+                            // 找出 end 节点
+                            let start = i + 1,
+                                end = length - 1,
+                                node_subquery = {type: "union", union: [], union_level: union_level};
+
+                            if(ast_outline[i + 1] && "all" === ast_outline[i + 1].value){
+
+                                start = i+2;
+                                node_subquery.type = "union all"
+                            }
+
+
+                            // 把所有连续的 expression 都打入 node_subquery 中
+                            for (let j = start; j <= end && ast_outline[j]; ++j) {
+
+                                if (ast_outline[i].index !== ast_outline[j].index) {
+
+                                    node_subquery.union.push(ast_outline[j]);
                                     delete ast_outline[j];
                                 } else {
 
@@ -2123,10 +2180,10 @@
 
                     console.timeEnd("runtime");
 
-                    debugMsg("Beauty SQL ...", debugColor.loading);
-                    let sql_beauty = this.beautySQL();
-                    console.log(sql_beauty.sql);
-                    return sql_beauty;
+                    debugMsg("Format SQL ...", debugColor.loading);
+                    let sql_format = this.formatSQL();
+                    console.log(sql_format.sql);
+                    return sql_format;
 
                 } catch (e) {
 
@@ -2185,8 +2242,8 @@
                 }
             },
 
-            // SQL美化: 通过 AST 树的属性(或者token表的属性, 反正就是需要借助这2个工具, 在特定的字符前加回车, 在特定字符前加N个空白格)实现
-            beautySQL() {
+            // SQL格式化: 通过 AST 树的属性(或者token表的属性, 反正就是需要借助这2个工具, 在特定的字符前加回车, 在特定字符前加N个空白格)实现
+            formatSQL() {
 
                 let obj = this.steps.syntacticAnalysis.getAST();
                 let token_table = globalVariableContainer.tokenTable;
@@ -2219,6 +2276,11 @@
                                 ++enters;
                                 sql = sql + "\n" + tool.makeContinuousStr(indent) + "(";
                                 indent += 4;
+                            } else if ("union" === property) {
+
+                                ++enters;
+                                sql = sql + "\n" + tool.makeContinuousStr(indent) + obj['type'].toLocaleUpperCase();
+                                indent += 4;
                             } else if ("function" === property) {
 
                                 sql = sql + " " + obj['function_name'].toLocaleUpperCase() + "(";
@@ -2235,7 +2297,7 @@
                                 indent -= 4;
                                 // sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
                                 sql = sql + "\n" + tool.makeContinuousStr(indent);
-                            } else if ("function" === property) {
+                            }else if ("function" === property) {
 
                                 sql = sql + " " + ")";
                             }
@@ -2277,7 +2339,7 @@
                     sql: sql,
                     enters: enters,
                 };
-            }
+            },
         },
     });
 

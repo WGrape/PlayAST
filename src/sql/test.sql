@@ -51,11 +51,17 @@ UPDATE test SET name = "dsds", age = 87 where id > 9 ;
 
 UPDATE test SET name = "dsds", age > 87 where id > 9 ;
 
+select distinct(productid ) , avg( orderqty ) as averagequantity , sum( linetotal ) as total from sales.salesorderdetail group by productid having sum( linetotal ) > $1000000.00 and avg( orderqty ) < 3 ;
+
 select * from ( select * from ( select productid , avg( orderqty ) as averagequantity , sum( linetotal ) as total from sales.salesorderdetail group by productid having sum( linetotal ) > $1000000.00 and avg( orderqty ) < 3 ) ) ;
 
 SELECT * FROM ( SELECT * FROM ( SELECT productid , AVG( orderqty ) AS averagequantity , SUM( linetotal ) AS total FROM sales.salesorderdetail GROUP BY productid HAVING SUM( linetotal ) > $1000000.00 AND AVG( orderqty ) < 3 )group by test.name having avg(score) > 87 ) where id > 98 ;
 
 select * , id , name from ( select * , id , name from (  select * , name from d1.test t1 , t3  left join d2.test2 on t1.uid = t2.id group by test2.name having ( id ) > 10 where id > 0 and concat(name) = "kidel" limit 0 , 32  ) as b ) as a where id > 10 and name != "" order by id desc limit 10 , 200;
+
+SELECT productid / 10 , AVG( orderqty ) AS averagequantity , SUM( linetotal ) AS total FROM sales.salesorderdetail GROUP BY productid HAVING SUM( linetotal ) > $1000000.00 AND AVG( orderqty ) < 3 ;
+SELECT productid/10 , AVG( orderqty ) AS averagequantity , SUM( linetotal ) AS total FROM sales.salesorderdetail GROUP BY productid HAVING SUM( linetotal ) > $1000000.00 AND AVG( orderqty ) < 3 ;
+
 
 select * , id , name from ( select * , id , name from ( select * , name from d1.test t1 , t3 left join d2.test2 on t1.uid = t2.id group by test2.name having ( id ) > 10 where id > 0 and concat(name) = "kidel" limit 0 , 32 ) as b ) as a where id > 10 and name != "" order by id desc limit 10 , 200;
 
@@ -67,7 +73,10 @@ DELETE A FROM YSHA A LEFT JOIN YSHB B ON A.code=b.code WHERE b.code = "jk"
 
 select name , age from db.users left join db.test on users.id = test.uid where id > 0 and id < 1000 order by id desc limit 5 , 100 ;
 
+SELECT E_Name FROM Employees_China UNION SELECT E_Name FROM Employees_USA
+
 delete a from ysha a left join yshb b on a.code = b.code group by a.name having ( a.id ) > 0 where b.code = "jk"
+
 
 SELECT d1.t1.c1 , d1.t1.c2, d1.t1.c3, c4, t1.c5 , , , c6,  from d1.t1, d2.t2, d3.t3, t4 , , , , ;
 
@@ -90,3 +99,10 @@ SELECT d1.t1.c1 , d1.t1.c2, d1.t1.c3 from d1.t1 ;
 SELECT * FROM ( SELECT * FROM ( SELECT * FROM d1.test t1, t3 LEFT JOIN d2.test2 ON t1.uid = t2.id WHERE id > 0 and concat(name) = "Kidel" limit 0, 32 ) )
 
 select *, id, name from ( select *, id, name from ( select *,name from d1.test t1 , t3 left join d2.test2 on t1.uid = t2.id where id > 0 and name = "kidel" limit 0 , 32 ) AS B ) as A ;
+
+
+
+
+select e_name from employees_china union select e_name from employees_usa
+select e_name from employees_china union select e_name from employees_usa union select e_name from employees_usa
+

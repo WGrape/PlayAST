@@ -14,7 +14,7 @@ PlayAST : Play With Abstract Syntax Tree
 通过AST可以对任何具有语法的语句实现任何解析，从而达到处理目标。其常见作用如下：
 - 优化语句，如实现对SQL的优化
 - 编写针对特定语法的编译器
-- 对语句进行格式化（美化）处理
+- 对语句进行格式化（格式化）处理
 
 ## 实现
 
@@ -25,7 +25,7 @@ PlayAST : Play With Abstract Syntax Tree
 ```
 目前支持功能: 
 1. SQL语法检查
-2. SQL代码格式化(美化)
+2. SQL代码格式化(格式化)
 3. 通过AST树可以开发更多的特性 ...
 ```
 

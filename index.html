@@ -70,39 +70,53 @@
     let sql_input_obj = $("#SQL_Input");
     let json_renderer_obj = $("#JSON_Renderer");
 
-    function beautySQL() {
+    function formatSQL() {
 
         let enter_px = 25; // 即1个换行符代表几个px像素
-        let sql_beauty = sql_review_obj.SQLCompilerAPI.beautySQL();
-        sql_input_obj.val(sql_beauty.sql);
-        sql_input_obj.css("height", enter_px * sql_beauty.enters); // 自适应高度
+        let sql_format = sql_review_obj.SQLCompilerAPI.formatSQL();
+        sql_input_obj.val(sql_format.sql);
+        sql_input_obj.css("height", enter_px * sql_format.enters); // 自适应高度
     }
 
     $(document).on("click", "#Go", function () {
 
-        let sql = sql_input_obj.val();
+        try{
 
-        sql_review_obj.text(sql);
+            let sql = sql_input_obj.val();
 
-        sql_review_obj.SQLCompiler({statement: 4, sql: sql});
+            sql_review_obj.text(sql);
 
-        let result = sql_review_obj.SQLCompilerAPI.steps.syntacticAnalysis.getASTOutlinePruned();
-        let input = eval('(' + JSON.stringify(result) + ')');
+            sql_review_obj.SQLCompiler({statement: 4, sql: sql});
 
-        json_renderer_obj.jsonViewer(input, {collapsed: false, withQuotes: false});
+            let result = sql_review_obj.SQLCompilerAPI.steps.syntacticAnalysis.getASTOutlinePruned();
+            let input = eval('(' + JSON.stringify(result) + ')');
 
-        beautySQL();
+            json_renderer_obj.jsonViewer(input, {collapsed: false, withQuotes: false});
+
+            formatSQL();
+
+        }catch(e){
+
+            alert(e);
+        }
     });
 
     $(document).on("click", "#Debug", function () {
 
-        let sql = sql_input_obj.val();
+        try{
 
-        sql_review_obj.text(sql);
+            let sql = sql_input_obj.val();
 
-        sql_review_obj.SQLCompilerAPI.testing(sql);
+            sql_review_obj.text(sql);
 
-        beautySQL();
+            sql_review_obj.SQLCompilerAPI.testing(sql);
+
+            formatSQL();
+
+        }catch(e){
+
+            alert(e);
+        }
     });
 
 </script>
