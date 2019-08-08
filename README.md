@@ -1,5 +1,5 @@
 # PlayAST
-PlayAST : Play With Abstract Syntax Tree
+PlayAST : 抽象语法树的设计与实现 ( PlayAST : Play With Abstract Syntax Tree )
 
 ## 介绍
 学习 [AST](https://zh.wikipedia.org/wiki/%E6%8A%BD%E8%B1%A1%E8%AA%9E%E6%B3%95%E6%A8%B9) 原理并实现
@@ -21,7 +21,7 @@ PlayAST : Play With Abstract Syntax Tree
 ### 1. SQL AST
 
 起初是因为需要做前端SQL语法检查，故而最先选择了 SQL AST 用 JS 实现，并提供了 Debug 以调试解析过程中的详细处理。
-运行 ```index.html``` 可以查看demo，SQL AST 核心可查看源码：```PlayAST/src/sql/jsCompiler.js```，[点击查看](./src/sql/jsCompiler.js) 。
+运行 ```./src/sql/index.html``` 可以查看demo，SQL AST 核心可查看源码：```PlayAST/src/sql/jsCompiler.js```，[点击查看](./src/sql/jsCompiler.js) 。
 
 #### 可支持的功能列表
 1. SQL语法检查
@@ -31,9 +31,9 @@ PlayAST : Play With Abstract Syntax Tree
 #### 可支持的SQL语法列表
 1. 子查询(最多3层)
 2. UNION 和 UNION ALL(最多3层)
-3. 支持 INSERT, DELETE, SELECT, UPDATE 4种操作 
+3. 支持 INSERT, DELETE, SELECT, UPDATE 4种操作, 除SELECT操作部分支持外, 其他3种操作都全部支持
 4. 查询支持 *, AS, (LEFT,RIGHT,INNER)JOIN, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT
-5. 运算符支持 LIKE, >, =, <, >=, <=, !=, <>, IS NULL 
+5. 运算符支持 LIKE, >, =, <, >=, <=, !=, <>, IS NULL, IS NOT NULL
 6. 函数支持 distinct, count, from_unixtime, avg, sum, max, min, round, mid, len, first, last, format, concat, length, char_length, upper, lower, year, now
 
 #### 示例

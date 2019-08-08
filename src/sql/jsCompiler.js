@@ -519,6 +519,9 @@
         sql_error_msg: "",
         syntactic_model: {}, // 当前的语法模型
 
+        sub_query_num: 1, // 子查询数
+        union_num: 0,// 联合查询数
+
         /**
          * lexicalAnalysis 词法分析阶段的产物
          */
@@ -912,6 +915,8 @@
             }
 
             num = (num < 1) ? 1 : num;
+
+            globalVariableContainer.sub_query_num = num;
 
             return num;
         },
@@ -2271,6 +2276,8 @@
                 // 如果 ast 的type 是下面的, 则换行且缩进
                 let enter_indent_arr = ["statement", "clause", "predicate", "function"];
 
+                let sub_query_num = globalVariableContainer.sub_query_num;
+                let sub_query_level = 1;
                 let whitespace = true;
                 let last_char = "";
                 let indent = 0; // 记录当前的缩进
@@ -2288,10 +2295,11 @@
 
                     for (let property of properties) {
 
-
                         if (Array.isArray(obj[property])) {
 
                             if ("subquery" === property) {
+
+                                ++sub_query_level;
 
                                 sql = sql + "\n" + tool.makeContinuousStr(indent) + "(";
                                 indent += 4;
@@ -2314,14 +2322,11 @@
                             if ("subquery" === property) {
 
                                 indent -= 4;
-                                sql = sql + "\n" + tool.makeContinuousStr(indent) + ")";
-                                // sql = sql + "\n" + tool.makeContinuousStr(indent);
+                                sql = sql + "\n" + tool.makeContinuousStr(indent) + (sub_query_level === sub_query_num ? "" : ")");
                                 ++enters;
                             } else if ("union" === property || "union all" === property) {
 
                                 indent -= 4;
-                                // sql = sql + "\n" + tool.makeContinuousStr(indent);
-                                // sql = sql + "\n" + tool.makeContinuousStr(indent);
                                 ++enters;
                             } else if ("function" === property) {
 

@@ -114,3 +114,6 @@ select e_name from employees_china union select e_name from employees_usa union 
 
 SELECT from_unixtime(e_name) FROM employees_china UNION ALL SELECT e_name FROM employees_usa UNION SELECT e_name FROM employees_usa ; all
 
+SELECT * FROM ( SELECT * FROM test union select * from test
+
+
