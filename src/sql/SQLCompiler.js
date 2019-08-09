@@ -473,6 +473,8 @@
 
                 ">": "operator",
                 "<": "operator",
+                "<=": "operator",
+                ">=": "operator",
                 "=": "operator",
                 "!=": "operator",
                 "<>": "operator",
@@ -578,6 +580,225 @@
         combineObjectToObject(obj, _obj) {
 
             return Object.assign(obj, _obj);
+        },
+
+        sqlFactory: {
+
+            // 伪造 n 条 SQL
+            fake(n = 10) {
+
+                let sqls = [];
+                let times = tool.getRandomNum(1, 5);
+
+                while (n) {
+
+                    sqls.push(this.fakeSQL(n, times));
+                    --n;
+                }
+
+                return sqls;
+            },
+
+            // 伪造第 n 条SQL
+            fakeSQL(n, times) {
+
+                let single = this.fakeSingle(times);
+                let single2 = this.fakeSingle(times);
+
+                let single_from_single = "select" + this.fakeColumns(times) + " from ( " + single + " ) " + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit " + this.fakeClauseLimit();
+                let single_from_single_from_single = "select" + this.fakeColumns(times) + " from ( " + single_from_single + " ) " + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit ";
+
+                if (0 === n % 5) {
+
+                    // 使用 1 个查询
+                    return single;
+                } else if (1 === n % 5) {
+
+                    // 使用 2 个查询
+                    return single_from_single;
+                } else if (2 === n % 5) {
+
+                    // 使用 3 个查询
+                    return single_from_single_from_single;
+                } else if (3 === n % 5) {
+
+                    // 使用 union 查询
+                    return single + " union " + single2;
+                } else {
+
+                    // 使用 2个查询 + UNION 查询
+                    return single_from_single + " union " + single2;
+                }
+            },
+
+            fakeSingle(times = 1) {
+
+                return "select " + this.fakeColumns(times) + " from " + this.fakeTables(times) + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit " + this.fakeClauseLimit();
+            },
+
+            fakeColumns(times = 1) {
+
+                let functions = ["distinct", "count", "from_unixtime", "avg", "sum", "max", "min", "round", "mid", "len", "first", "last", "format", "concat", "length", "char_length", "upper", "lower", "year", "now"];
+                let columns = ["*", "db1.table1.column1", "db1.table1.column1 alias_column1", "table1.column1", "table1.column1 as alias_column1", "table1.column1 alias_column1", "db2.table2.column2", "table2.column2", "table2.column2 alias_column2", "column1", "column1 alias_column1", "column1 as alias_column1",];
+
+                let fake_columns = "";
+                for (let i = 0; i <= times - 1; ++i) {
+
+                    let cur = tool.getRandomNum(0, columns.length - 1);
+                    let column;
+                    if (i % 2) {
+                        column = functions[tool.getRandomNum(0, functions.length - 1)] + "( " + columns[cur] + " , param2 )";
+                    } else {
+
+                        column = columns[cur];
+                    }
+
+                    if (0 === i) {
+
+                        fake_columns = column;
+                    } else {
+
+                        fake_columns += (", " + column);
+                    }
+                }
+
+                return fake_columns;
+            },
+
+            fakeTables(times = 1) {
+
+                let tables = ["db.table1", "table1"];
+
+                let fake_tables = "";
+                for (let i = 0; i <= times - 1; ++i) {
+
+                    let cur = tool.getRandomNum(0, tables.length - 1);
+                    if (0 === i) {
+
+                        fake_tables = tables[cur];
+                    } else {
+
+                        fake_tables += (", " + tables[cur]);
+                    }
+                }
+
+                return fake_tables;
+            },
+
+            // 伪造 where 子句
+            fakeClauseWhere(times = 1) {
+
+                let operators = [">", "<", "=", ">=", "<=", "!=", "<>", "like", "is null", "is not null"];
+
+                let fake_where = "";
+                for (let i = 0; i <= times - 1; ++i) {
+
+                    let cur = tool.getRandomNum(0, operators.length - 1);
+                    let left = this.fakeColumns(1), operator = operators[cur], right = this.fakeValues(1);
+
+                    if (0 === i) {
+
+                        fake_where = (left + " " + operator + " " + right);
+                    } else {
+
+                        fake_where += (" AND " + left + " " + operator + " " + right);
+                    }
+                }
+
+                return fake_where;
+            },
+
+            // 伪造 join 子句
+            fakeClauseJoin() {
+
+            },
+
+            // 伪造 group 子句
+            fakeClauseGroup() {
+
+                return "group by " + this.fakeColumns(1);
+            },
+
+            fakeClauseHaving() {
+
+                // return "having"
+            },
+
+            // 伪造 order 子句
+            fakeClauseOrder(times = 1) {
+
+                let fake_order = "";
+                let order = ["", " desc", " asc"];
+
+                for (let i = 0; i <= times - 1; ++i) {
+
+                    if (0 === i) {
+
+                        fake_order = this.fakeColumns(1) + order[i % 3];
+                    } else {
+
+                        fake_order += (", " + this.fakeColumns(1) + order[i % 3]);
+                    }
+                }
+
+                return fake_order;
+            },
+
+            // 伪造 limit 子句
+            fakeClauseLimit() {
+
+                let needle = tool.getRandomNum(10, 9999);
+
+                if (needle % 2) {
+
+                    return this.fakeValues(1, true) + " , " + this.fakeValues(1, true);
+                } else {
+
+                    return this.fakeValues(1, true);
+                }
+            },
+
+            fakeValues(times = 1, mustNumber = false) {
+
+                let lexicon = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
+
+                let fake_values = "";
+                for (let i = 0; i <= times - 1; ++i) {
+
+                    let fake_value;
+
+                    if (0 === tool.getRandomNum(10, 1000) % 2 && !mustNumber) {
+
+                        fake_value = lexicon[tool.getRandomNum(0, lexicon.length - 1)] + "_fake";
+                    } else {
+
+                        fake_value = tool.getRandomNum(10, 9999);
+                    }
+
+                    if (0 === i) {
+
+                        fake_values += fake_value;
+                    } else {
+
+                        fake_values += (", " + fake_value);
+                    }
+                }
+
+                return fake_values;
+            }
+        },
+
+        // 获取 min-max 随机数
+        getRandomNum(minNum, maxNum) {
+
+            switch (arguments.length) {
+                case 1:
+                    return parseInt(Math.random() * minNum + 1, 10);
+                case 2:
+                    return parseInt(Math.random() * (maxNum - minNum + 1) + minNum, 10);
+                default:
+                    return 0;
+            }
         },
 
         // 返回关键字数组
@@ -1751,17 +1972,17 @@
                             // 如果不是函数, 不是子查询 则就是不必要的括号
                             // 函数的区分方式是 当前字符是(, 且前面的字符不是空格, 是一个字符
                             // 子查询区分方式是 当前字符是(, 且前面的字符是空格
-                            let j;
+                            let j, k;
                             for (let i = 0; sql[i]; ++i) {
 
                                 if ("(" === sql[i]) {
 
                                     if (" " === sql[i - 1]) {
 
-                                        // 判断是否是子查询 : 向左搜到第一个不为空格的字符为止
-                                        for (j = i - 1; " " === sql[j]; --j) {
-                                        }
-                                        if ("from" === sql.slice(j - 3, j + 1).toLocaleLowerCase()) {
+                                        // 判断是否是子查询 : 向左搜到第一个不为空格的字符为止, 向右搜到第一个不为空格的字符为止
+                                        for (j = i - 1; " " === sql[j]; --j) ;
+                                        for (k = i + 1; " " === sql[k]; ++k) ;
+                                        if ("from" === sql.slice(j - 3, j + 1).toLocaleLowerCase() && "select" === sql.slice(k, k + 6).toLocaleLowerCase()) {
 
                                             continue;
                                         }
@@ -2150,8 +2371,8 @@
 
         SQLCompilerAPI: {
 
-            // 自动化测试
-            testing(sql = "") {
+            // 调试
+            debug(sql = "") {
 
                 let compiler = SQLCompiler.prototype.compile.steps;
                 globalVariableContainer.config.statement = 4;
@@ -2214,10 +2435,9 @@
 
                     tool.errorHandle(e);
                 }
-
             },
 
-            // 单步, 获取每步的执行情况
+            // 单步, 获取每步的执行情况, 仅适用于SQLCompiler
             steps: {
 
                 lexicalAnalysis: {
@@ -2371,6 +2591,14 @@
                     enters: enters,
                 };
             },
+
+            //
+
+            // 自动化测试
+            testing(n = 10) {
+
+                return tool.sqlFactory.fake(n);
+            }
         },
     });
 

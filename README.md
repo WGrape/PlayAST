@@ -21,7 +21,7 @@ PlayAST : 抽象语法树的设计与实现 ( PlayAST : Play With Abstract Synta
 ### 1. SQL AST
 
 起初是因为需要做前端SQL语法检查，故而最先选择了 SQL AST 用 JS 实现，并提供了 Debug 以调试解析过程中的详细处理。
-运行 ```./src/sql/index.html``` 可以查看demo，SQL AST 核心可查看源码：```PlayAST/src/sql/jsCompiler.js```，[点击查看](./src/sql/jsCompiler.js) 。
+运行 ```./src/sql/index.html``` 可以查看demo，SQL AST 核心可查看源码：```PlayAST/src/sql/SQLCompiler.js```，[点击查看](src/sql/SQLCompiler.js) 。
 
 #### 可支持的功能列表
 1. SQL语法检查

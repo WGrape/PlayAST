@@ -10,9 +10,16 @@
 
     <style>
 
+        .block {
+
+            margin-top: 30px;
+        }
+
         body {
+
+            width: 80%;
+            margin: 0 auto;
             margin-top: 20px;
-            margin-left: 20px;
         }
 
         textarea {
@@ -23,6 +30,7 @@
             min-height: 150px;
             padding: 10px;
             font-size: 15px;
+            max-width: 100%;
         }
 
         button {
@@ -37,11 +45,45 @@
             margin-right: 20px;
         }
 
+        #JSON_Renderer{
+
+            display: none;
+        }
+
         #Debug {
 
             background: #FF9800;
         }
 
+        #Testing {
+
+            background: blue;
+        }
+
+        #TestingBlock{
+
+        }
+
+        #TestingBlock ul{
+
+            padding-left: 0;
+        }
+        #TestingBlock ul li{
+
+            padding: 5px 10px 5px 0;
+            list-style: none;
+            font-size:15px;
+            color: #888;
+            text-align: justify;
+        }
+
+        #TestingBlock ul li i{
+
+            font-size: 20px;
+            font-weight: bold;
+            color: #000;
+            margin-right: 5px;
+        }
     </style>
 
 </head>
@@ -56,13 +98,19 @@
 
 <button id="Debug">Debug</button>
 
-<div style="margin-top: 30px;">
-    <pre id="JSON_Renderer" style="width: 80%;padding-left: 30px;"></pre>
+<button id="Testing">Testing</button>
+
+<div class="block" id="TestingBlock">
+    <ul></ul>
+</div>
+
+<div class="block">
+    <pre id="JSON_Renderer" style="padding-left: 30px;"></pre>
 </div>
 
 <script src="https://cdn.bootcss.com/jquery/2.2.1/jquery.min.js"></script>
 <script src="../../plug/json-viewer/js/jquery.json-viewer.js"></script>
-<script src="jsCompiler.js"></script>
+<script src="SQLCompiler.js"></script>
 <script src="../../debug/debug.js"></script>
 <script>
 
@@ -80,7 +128,7 @@
 
     $(document).on("click", "#Go", function () {
 
-        try{
+        try {
 
             let sql = sql_input_obj.val();
 
@@ -91,11 +139,12 @@
             let result = sql_review_obj.SQLCompilerAPI.steps.syntacticAnalysis.getASTOutlinePruned();
             let input = eval('(' + JSON.stringify(result) + ')');
 
+            json_renderer_obj.fadeIn();
             json_renderer_obj.jsonViewer(input, {collapsed: false, withQuotes: false});
 
             formatSQL();
 
-        }catch(e){
+        } catch (e) {
 
             alert(e);
         }
@@ -103,17 +152,36 @@
 
     $(document).on("click", "#Debug", function () {
 
-        try{
+        try {
 
             let sql = sql_input_obj.val();
 
             sql_review_obj.text(sql);
 
-            sql_review_obj.SQLCompilerAPI.testing(sql);
+            sql_review_obj.SQLCompilerAPI.debug(sql);
 
             formatSQL();
 
-        }catch(e){
+        } catch (e) {
+
+            alert(e);
+        }
+    });
+
+    $(document).on("click", "#Testing", function () {
+
+        try {
+
+            let sqls = sql_review_obj.SQLCompilerAPI.testing(100);
+
+            let i =1;
+            for(let sql of sqls){
+
+                $("#TestingBlock ul").append("<li><i>"+i+".</i><span>"+ sql + "</span>" + "<span style='color:#0d940d;display: block;padding-top: 5px;border-bottom:1px solid #eee;margin-bottom: 10px;'>success</span>" +"</li>");
+                ++i;
+            }
+
+        } catch (e) {
 
             alert(e);
         }
