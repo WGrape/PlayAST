@@ -45,7 +45,18 @@
             margin-right: 20px;
         }
 
-        #JSON_Renderer{
+        button.btn-copy {
+
+            padding: 3px 5px;
+            width: auto;
+            margin: auto;
+            margin-left: 5px;
+            border-radius: 10px;
+            background: #4079de;
+            font-size: 10px;
+        }
+
+        #JSON_Renderer {
 
             display: none;
         }
@@ -60,24 +71,25 @@
             background: blue;
         }
 
-        #TestingBlock{
+        #TestingBlock {
 
         }
 
-        #TestingBlock ul{
+        #TestingBlock ul {
 
             padding-left: 0;
         }
-        #TestingBlock ul li{
+
+        #TestingBlock ul li {
 
             padding: 5px 10px 5px 0;
             list-style: none;
-            font-size:15px;
+            font-size: 15px;
             color: #888;
             text-align: justify;
         }
 
-        #TestingBlock ul li i{
+        #TestingBlock ul li i {
 
             font-size: 20px;
             font-weight: bold;
@@ -109,6 +121,7 @@
 </div>
 
 <script src="https://cdn.bootcss.com/jquery/2.2.1/jquery.min.js"></script>
+<script src="https://cdn.bootcss.com/clipboard.js/2.0.4/clipboard.js"></script>
 <script src="../../plug/json-viewer/js/jquery.json-viewer.js"></script>
 <script src="SQLCompiler.js"></script>
 <script src="../../debug/debug.js"></script>
@@ -144,6 +157,8 @@
 
             formatSQL();
 
+            $("#TestingBlock").fadeOut();
+
         } catch (e) {
 
             alert(e);
@@ -164,20 +179,35 @@
 
         } catch (e) {
 
+            console.log(e);
             alert(e);
         }
     });
 
+    let times = 0;
     $(document).on("click", "#Testing", function () {
+
+        ++times;
 
         try {
 
+            $("#TestingBlock").fadeIn();
+            $("#JSON_Renderer").fadeOut();
+
+            if (times > 1) {
+
+                $("#TestingBlock ul").html("").fadeOut();
+            }
+
             let sqls = sql_review_obj.SQLCompilerAPI.testing(100);
 
-            let i =1;
-            for(let sql of sqls){
+            $("#TestingBlock ul").fadeIn();
 
-                $("#TestingBlock ul").append("<li><i>"+i+".</i><span>"+ sql + "</span>" + "<span style='color:#0d940d;display: block;padding-top: 5px;border-bottom:1px solid #eee;margin-bottom: 10px;'>success</span>" +"</li>");
+            let i = 1;
+            for (let sql of sqls) {
+
+                $("#TestingBlock ul").append("<li><i>" + i + ".</i><span class='sql-example-" + i + "'>" + sql + "</span><button class='btn-copy' data-clipboard-target='.sql-example-" + i + "'>copy" + "</button><span style='color:#0d940d;display: block;padding-top: 5px;border-bottom:1px solid #eee;margin-bottom: 10px;'>success</span>" + "</li>");
+                new ClipboardJS('.btn-copy');
                 ++i;
             }
 

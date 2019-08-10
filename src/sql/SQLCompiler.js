@@ -148,6 +148,9 @@
                 "String": 5004,
             },
 
+            // Collapsed Grouping Node
+            collapsedGrouping: ["select", "from", "where", "join", "left join", "right join", "inner join", "group", "group by", "having", "order by", "limit"],
+
             operatorTable: ["<", ">", "=", "<=", ">=", "!=", "<>"],
         },
 
@@ -550,7 +553,8 @@
 
             if ("undefined" === typeof e.index) {
 
-                console.error(e);
+                // console.error(e);
+                throw e.msg.toLocaleUpperCase();
                 return;
             }
 
@@ -605,8 +609,8 @@
                 let single = this.fakeSingle(times);
                 let single2 = this.fakeSingle(times);
 
-                let single_from_single = "select" + this.fakeColumns(times) + " from ( " + single + " ) " + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit " + this.fakeClauseLimit();
-                let single_from_single_from_single = "select" + this.fakeColumns(times) + " from ( " + single_from_single + " ) " + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit ";
+                let single_from_single = "select " + this.fakeColumns(times) + " from ( " + single + " ) " + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit " + this.fakeClauseLimit();
+                let single_from_single_from_single = "select " + this.fakeColumns(times) + " from ( " + single_from_single + " ) " + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit ";
 
                 if (0 === n % 5) {
 
@@ -1252,7 +1256,7 @@
                     for (let node of ast_outline) {
 
                         // 只要 type 是 expression 则统一加上 token 属性
-                        if ("expression" === node.type) {
+                        if ("expression" === node.type && token_table[node.index]) {
 
                             // 预处理, 把expression类型的AST节点都加上token字段
                             node.token = token_table[node.index].type;
@@ -1495,7 +1499,7 @@
                     }
 
                     // 使用正则验证一下
-                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*){1,2})\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*){1,2})\s*)+$/g);
+                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*){1,2})\s*(column){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*){1,2})\s*(column){0,1}\s*)+$/g);
                     if ("order by" !== clause && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
 
                         throw tool.makeErrorObjOfRegError(columns, clause + " clause error");
@@ -1550,8 +1554,8 @@
                     tool.pruningAST.sensing.understandColumnList(first, "order by");
 
                     // 使用正则验证一下
-                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column){1,2})\s*(sort){0,1}\s*)+$/g);
-                    if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
+                    let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(column){0,1}\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(column){0,1}\s*(sort){0,1}\s*)+$/g);
+                    if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant", (column) => "alias" !== column.variant).join(" "))) {
 
                         throw tool.makeErrorObjOfRegError(first, "order by clause error");
                     }
@@ -1565,7 +1569,7 @@
                     let reg = new RegExp(/^\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*$/g);
                     if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
 
-                        throw tool.makeErrorObjOfRegError(first, "group by error");
+                        throw tool.makeErrorObjOfRegError(first, "group by clause error");
                     }
                 },
 
