@@ -39,7 +39,7 @@ PlayAST : 抽象语法树的设计与实现 ( PlayAST : Play With Abstract Synta
 6. 函数支持 distinct, count, from_unixtime, avg, sum, max, min, round, mid, len, first, last, format, concat, length, char_length, upper, lower, year, now
 
 #### 示例
-<img src="./extra/images/demo-sql-js.gif" width="700px">
+<img src="./extra/images/demo.gif" width="700px">
 
 ## 参考
 [详见资料学习参考](./extra/docs/reference.md)

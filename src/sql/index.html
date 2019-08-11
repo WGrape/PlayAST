@@ -39,7 +39,7 @@
             padding: 10px 15px;
             background: green;
             color: #FFF;
-            width: 70px;
+            width: 120px;
             border: none;
             margin-top: 17px;
             margin-right: 20px;
@@ -185,39 +185,49 @@
     });
 
     let times = 0;
-    $(document).on("click", "#Testing", function () {
+    $(document).on("mousedown", "#Testing", function () {
+
+        $("#JSON_Renderer").fadeOut();
+        $("#TestingBlock").fadeIn();
+        $("#Testing").text("Loading...");
 
         ++times;
+        if (times > 1) {
 
-        try {
+            $("#TestingBlock ul").html("").fadeOut();
+        }
 
-            $("#TestingBlock").fadeIn();
-            $("#JSON_Renderer").fadeOut();
-
-            if (times > 1) {
-
-                $("#TestingBlock ul").html("").fadeOut();
-            }
+        // 这个耗时操作必须放到异步里面才可以, 因为DOM操作只会在程序执行完后才执行, 把耗时的操作放到setTimeout里面其实就是异步让它执行, 此时程序很快执行完, DOM操作也就会执行了。
+        // https://stackoverflow.com/questions/16876394/dom-refresh-on-long-running-function
+        setTimeout(function () {
 
             let sqls = sql_review_obj.SQLCompilerAPI.testing(100);
+            testOneByOne(sqls);
+        }, 100);
 
-            $("#TestingBlock ul").fadeIn();
 
-            let i = 1;
-            for (let sql of sqls) {
+        function testOneByOne(sqls) {
 
-                sql_review_obj.SQLCompilerAPI.debug(sql);
+            try{
 
-                $("#TestingBlock ul").append("<li><i>" + i + ".</i><span class='sql-example-" + i + "'>" + sql + "</span><button class='btn-copy' data-clipboard-target='.sql-example-" + i + "'>copy" + "</button><span style='color:#0d940d;display: block;padding-top: 5px;border-bottom:1px solid #eee;margin-bottom: 10px;'>success</span>" + "</li>");
-                new ClipboardJS('.btn-copy');
-                ++i;
+                let i = 1,
+                    tpl = "<li style='margin-bottom: 20px;'><i style='color:#0d940d;'>Congratulations ！100条SQL已全部通过测试 ！</i></li>";
+                for (let sql of sqls) {
+
+                    sql_review_obj.SQLCompilerAPI.debug(sql);
+
+                    tpl += "<li><i>" + i + ".</i><span class='sql-example-" + i + "'>" + sql + "</span><button class='btn-copy' data-clipboard-target='.sql-example-" + i + "'>copy" + "</button><span style='color:#0d940d;display: block;padding-top: 5px;border-bottom:1px solid #eee;margin-bottom: 10px;'>success</span>" + "</li>";
+                    new ClipboardJS('.btn-copy');
+                    ++i;
+                }
+
+                $("#TestingBlock ul").fadeIn().append(tpl);
+                $("#Testing").text("Testing");
+
+            }catch(e){
+
+                alert(e);
             }
-
-            $("#TestingBlock ul").prepend("<li style='margin-bottom: 20px;'><i style='color:#0d940d;'>Congratulations ！100条SQL已全部通过测试 ！</i></li>");
-
-        } catch (e) {
-
-            alert(e);
         }
     });
 
