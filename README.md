@@ -26,11 +26,13 @@ PlayAST : 抽象语法树的设计与实现 ( PlayAST : Play With Abstract Synta
 #### 可支持的功能列表
 1. SQL语法检查
 2. SQL代码格式化(格式化)
+3. 生成大量 Fake SQL 以完成自动化测试
 3. 通过AST树可以开发更多的特性 ...
 
 #### 可支持的SQL语法列表
 1. 子查询(最多3层)
 2. UNION 和 UNION ALL(最多3层)
+3. 子查询 和 UNION 同时使用 \[ 不超过3个,如select * from ( select * from test union select * from test ) ]
 3. 支持 INSERT, DELETE, SELECT, UPDATE 4种操作, 除SELECT操作部分支持外, 其他3种操作都全部支持
 4. 查询支持 *, AS, (LEFT,RIGHT,INNER)JOIN, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT
 5. 运算符支持 LIKE, >, =, <, >=, <=, !=, <>, IS NULL, IS NOT NULL
