@@ -139,3 +139,8 @@ select column1, avg( param2 ), table1.column1 from ( select table2.column2, * fr
 union select column1 as alias_column1, length( table1.column1 as alias_column1 , param2 ), column1 alias_column1 from table1, table1, table1 where table1.column1 alias_column1 is null AND table1.column1 = 8318 AND db1.table1.column1 >= "b_fake" order by column1 alias_column1, column1 alias_column1 desc, column1 asc limit 4334 , 3187
 
 
+SELECT db1.table1.column1 , LENGTH( db1.table1.column1 alias_column1 , param2 ) , db1.table1.column1 alias_column1 FROM ( SELECT table1.column1 alias_column1 , YEAR( db1.table1.column1 alias_column1 , param2 ) , table1.column1 alias_column1 FROM table1 , table1 , table1 WHERE column1 alias_column1 >= 8523 AND db1.table1.column1 IS NULL AND table1.column1 alias_column1 = 6280 ORDER BY column1 AS alias_column1 , table1.column1 DESC , table1.column1 ASC LIMIT 1831 ) WHERE table2.column2 alias_column2 <= "x_fake" AND table1.column1 AS alias_column1 LIKE 5405 AND db2.table2.column2 > "o_fake" ORDER BY db2.table2.column2 , db1.table1.column1 alias_column1 DESC , column1 alias_column1 ASC LIMIT 8254 UNION SELECT table1.column1 alias_column1 , UPPER(db2.table2.column2 , param2) , * FROM table1 , db.table1 , db.table1 WHERE table1.column1 AS alias_column1 > "a_fake" AND db1.table1.column1 >= "p_fake" AND table2.column2 alias_column2 > 6110 ORDER BY column1 AS alias_column1 , db1.table1.column1 alias_column1 DESC , table1.column1 alias_column1 ASC LIMIT 3225 ;
+
+select * from test having sum( linetotal ) > $1000000.00 and avg( orderqty ) < 3 ;
+
+

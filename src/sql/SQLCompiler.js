@@ -897,7 +897,12 @@
                         break;
                     }
 
-                    if (!son || keyword.indexOf(son.value) > -1 || "close" === son.variant) {
+                    if ("close" === son.variant) {
+
+                        break;
+                    }
+
+                    if (son.value && keyword.indexOf(son.value) > -1) {
 
                         break;
                     }
@@ -1284,6 +1289,29 @@
                 }
             }
 
+            // 1. select from ( select ) union
+            // 2. select from ( select union select )
+            // 3. select union select from ( select )
+            function getASTOutlineOfSubQueryLevel3(root) {
+
+                let parent_node = null;
+
+                for (let item of root.children) {
+
+                    if (item && item.subquery) {
+
+                        parent_node = item.subquery;
+                    }
+
+                    if (item && item.union) {
+
+                        parent_node = item.union
+                    }
+                }
+
+                return parent_node;
+            }
+
             let ast_outline;
             if (1 === sub_query_level) {
 
@@ -1293,7 +1321,7 @@
                 ast_outline = getASTOutlineOfSubQueryLevel2(root);
             } else {
 
-                ast_outline = getASTOutlineOfSubQueryLevel2(root);
+                ast_outline = getASTOutlineOfSubQueryLevel3(root);
                 for (let item of ast_outline) {
 
                     if (item && item.subquery) {
@@ -1764,7 +1792,6 @@
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
                     for (let i = 0; ast_outline[i]; ++i) {
 
-                        let node = ast_outline[i];
                         let pre_node = ast_outline[i - 1];
                         if (!pre_node || keyword.indexOf(pre_node.value) < 0) {
 
@@ -1772,13 +1799,14 @@
                         }
 
                         // 如果 pre_node 是from节点, 那么 node 可能是子查询, 所以需要判断一下当前节点是否含有 node.value 来判断是否是可以捡入 node_grouping 中
-                        if (node.value) {
-
-                            // 把所有连续的 expression 都捡入 node_grouping 中
-                            let obj = tool.pickContinuousExpression.ofGrouping(i, keyword, ast_outline, pre_node.value);
-                            ast_outline[i] = obj.node_grouping;
-                            i = obj.end;
+                        if ("from" === pre_node.variant) {
+                            continue;
                         }
+
+                        // 把所有连续的 expression 都捡入 node_grouping 中 (如果还有其他不得捡入的情况, 也需要加到上面的if条件中)
+                        let obj = tool.pickContinuousExpression.ofGrouping(i, keyword, ast_outline, pre_node.value);
+                        ast_outline[i] = obj.node_grouping;
+                        i = obj.end;
                     }
                 },
 
