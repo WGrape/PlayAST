@@ -14,6 +14,7 @@
  * 11. 处理多个SQL的情况(只取第一个SQL，不支持多个SQL), 处理不必要的逗号
  * 12. 只要是括号匹配目前都可能有bug
  * 13. str[i] 替代 i<=length -1
+ * 14. 未 diffingNodePropertyVariant 前用 value , diffingNodePropertyVariant 后 , 必须全部使用 variant , 除非例外
  * Author:Lvsi
  */
 (function () {
@@ -149,7 +150,7 @@
             },
 
             // Collapsed Grouping Node
-            collapsedGrouping: ["select", "from", "where", "join", "left join", "right join", "inner join", "group", "group by", "having", "order by", "limit"],
+            collapsedGrouping: ["select", "from", "where", "join", "left join", "right join", "inner join", "group", "group by", "having", "order", "order by", "limit", "union"],
 
             operatorTable: ["<", ">", "=", "<=", ">=", "!=", "<>"],
         },
@@ -553,9 +554,11 @@
 
             if ("undefined" === typeof e.index) {
 
-                // console.error(e);
-                throw e.msg.toLocaleUpperCase();
-                return;
+                if (e.msg) {
+
+                    throw e.msg.toLocaleUpperCase();
+                }
+                throw e;
             }
 
             let token_table = globalVariableContainer.tokenTable, msg = "ERRNO " + e.index + " near : ";
@@ -610,7 +613,7 @@
                 let single2 = this.fakeSingle(times);
 
                 let single_from_single = "select " + this.fakeColumns(times) + " from ( " + single + " ) " + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit " + this.fakeClauseLimit();
-                let single_from_single_from_single = "select " + this.fakeColumns(times) + " from ( " + single_from_single + " ) " + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit ";
+                let single_from_single_from_single = "select " + this.fakeColumns(times) + " from ( " + single_from_single + " ) " + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit " + this.fakeClauseLimit();
 
                 if (0 === n % 5) {
 
@@ -640,7 +643,7 @@
                 return "select " + this.fakeColumns(times) + " from " + this.fakeTables(times) + " where " + this.fakeClauseWhere(times) + " order by " + this.fakeClauseOrder(times) + " limit " + this.fakeClauseLimit();
             },
 
-            fakeColumns(times = 1) {
+            fakeColumns(times = 1, deny_star = false) {
 
                 let functions = ["distinct", "count", "from_unixtime", "avg", "sum", "max", "min", "round", "mid", "len", "first", "last", "format", "concat", "length", "char_length", "upper", "lower", "year", "now"];
                 let columns = ["*", "db1.table1.column1", "db1.table1.column1 alias_column1", "table1.column1", "table1.column1 as alias_column1", "table1.column1 alias_column1", "db2.table2.column2", "table2.column2", "table2.column2 alias_column2", "column1", "column1 alias_column1", "column1 as alias_column1",];
@@ -648,7 +651,7 @@
                 let fake_columns = "";
                 for (let i = 0; i <= times - 1; ++i) {
 
-                    let cur = tool.getRandomNum(0, columns.length - 1);
+                    let cur = deny_star ? tool.getRandomNum(1, columns.length - 1) : tool.getRandomNum(0, columns.length - 1);
                     let column;
                     if (i % 2) {
                         column = functions[tool.getRandomNum(0, functions.length - 1)] + "( " + columns[cur] + " , param2 )";
@@ -698,7 +701,12 @@
                 for (let i = 0; i <= times - 1; ++i) {
 
                     let cur = tool.getRandomNum(0, operators.length - 1);
-                    let left = this.fakeColumns(1), operator = operators[cur], right = this.fakeValues(1);
+                    let left = this.fakeColumns(1, true), operator = operators[cur], right = this.fakeValues(1);
+
+                    if (operator.indexOf("null") > -1) {
+
+                        right = "";
+                    }
 
                     if (0 === i) {
 
@@ -720,7 +728,7 @@
             // 伪造 group 子句
             fakeClauseGroup() {
 
-                return "group by " + this.fakeColumns(1);
+                return "group by " + this.fakeColumns(1, true);
             },
 
             fakeClauseHaving() {
@@ -738,10 +746,10 @@
 
                     if (0 === i) {
 
-                        fake_order = this.fakeColumns(1) + order[i % 3];
+                        fake_order = this.fakeColumns(1, true) + order[i % 3];
                     } else {
 
-                        fake_order += (", " + this.fakeColumns(1) + order[i % 3]);
+                        fake_order += (", " + this.fakeColumns(1, true) + order[i % 3]);
                     }
                 }
 
@@ -773,7 +781,7 @@
 
                     if (0 === tool.getRandomNum(10, 1000) % 2 && !mustNumber) {
 
-                        fake_value = lexicon[tool.getRandomNum(0, lexicon.length - 1)] + "_fake";
+                        fake_value = "\"" + lexicon[tool.getRandomNum(0, lexicon.length - 1)] + "_fake\"";
                     } else {
 
                         fake_value = tool.getRandomNum(10, 9999);
@@ -790,6 +798,117 @@
 
                 return fake_values;
             }
+        },
+
+        bracketMatchedByStack(from, ast_outline) {
+
+            let stack = [], end = -1;
+            for (let j = from; ast_outline[j]; ++j) {
+
+                if ("left_bracket" === ast_outline[j].variant) {
+
+                    stack.push("(");
+                } else if ("right_bracket" === ast_outline[j].variant && stack.length === 0) {
+
+                    end = j - 1;
+                    delete ast_outline[j];
+                    break;
+                } else if ("right_bracket" === ast_outline[j].variant && "(" === stack[stack.length - 1]) {
+
+                    stack.pop();
+                }
+
+                if (!ast_outline[j + 1]) {
+
+                    end = j;
+                    break;
+                }
+            }
+
+            if (end < 0) {
+
+                throw tool.makeErrorObj(false, "No match Subquery");
+            }
+
+            return end;
+        },
+
+        pickContinuousExpression: {
+
+            ofSubquery(from, end, sub_query_level, ast_outline) {
+
+                let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
+                for (let j = from; j <= end && ast_outline[j]; ++j) {
+
+                    node_subquery.subquery.push(ast_outline[j]);
+                    delete ast_outline[j];
+                }
+
+                return node_subquery;
+            },
+
+            ofUnion(from, union_level, ast_outline) {
+
+                // 初始化
+                let node_union = {type: "union", union: [], union_level: union_level};
+                if (ast_outline[from + 1] && "all" === ast_outline[from + 1].value) {
+
+                    from = from + 2;
+                    node_union.type = "union all"
+                } else {
+
+                    from = from + 1;
+                }
+
+                // 找到 end
+                let end = ast_outline.length - 1;
+                for (let j = from; ast_outline[j]; ++j) {
+
+                    if ("union" === ast_outline[j].value) {
+
+                        end = j - 1;
+                        break;
+                    }
+                }
+
+                for (let j = from; j <= end && ast_outline[j]; ++j) {
+
+                    node_union.union.push(ast_outline[j]);
+                    delete ast_outline[j];
+                }
+
+                return node_union;
+            },
+
+            ofGrouping(from, keyword, ast_outline, groupingFor) {
+
+                let j = from;
+                let node_grouping = {type: "grouping", grouping: [], for: groupingFor};
+                while (1) {
+
+                    let son = ast_outline[j];
+                    if (!son) {
+
+                        break;
+                    }
+
+                    if ("union" === son.type && !son.value) {
+
+                        break;
+                    }
+
+                    if (!son || keyword.indexOf(son.value) > -1 || "close" === son.variant) {
+
+                        break;
+                    }
+
+                    node_grouping.grouping.push(son);
+                    delete ast_outline[j];
+                    ++j;
+                }
+
+                return {node_grouping: node_grouping, end: j};
+            },
         },
 
         // 获取 min-max 随机数
@@ -1203,7 +1322,6 @@
                 this.diffing.diffingNodePropertyType(root, sub_query_level);
                 this.diffing.diffingNodePropertyToken(root, sub_query_level);
                 this.diffing.diffingNodePropertyVariant(root, sub_query_level);
-                this.diffing.diffingNodePropertyMatchedBracketIndex(root, sub_query_level);
 
                 // 然后 collapsing
                 this.collapsing.collapsingSubqueryTypeNode(root, sub_query_level);
@@ -1274,37 +1392,11 @@
                     for (let i = 0; i <= length - 1; ++i) {
 
                         let node = ast_outline[i];
-                        let next_node = ast_outline[i + 1];
-
-                        // 识别函数不能仅依赖tokenValueMapVariant, 需要特殊处理
-                        if ("function" === tokenValueMapVariant[node.value] && next_node && "(" !== next_node.value) {
-
-                            continue;
-                        }
 
                         // 根据当前节点的 Value 对当前节点Variant进行Diff。node.variant === node.value 表示当前节点的 variant 值还是当时创建的时候给的, 所以需要对它Diff
                         node.variant = (node.variant === node.value && tokenValueMapVariant[node.value]) ? tokenValueMapVariant[node.value] : node.variant;
                     }
                 },
-
-                // diff节点的 matched_bracket_index 属性
-                diffingNodePropertyMatchedBracketIndex(root, sub_query_level) {
-
-                    let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
-                    let length = ast_outline.length;
-                    let right_bracket_num = 0;
-
-                    for (let i = 0; i <= length - 1; ++i) {
-
-                        let node = ast_outline[i];
-
-                        if (")" === node.value) {
-
-                            ++right_bracket_num;
-                            //node.matched_bracket_index = tool.getLastNthLeftBracketASTIndex(right_bracket_num);
-                        }
-                    }
-                }
             },
 
             // sensing函数(make sense)
@@ -1339,7 +1431,7 @@
 
                         let node = ast_outline[i];
 
-                        if ("grouping" !== ast_outline[i].type) {
+                        if ("grouping" !== node.type) {
 
                             continue;
                         } else if ("values" === node['for']) {
@@ -1500,7 +1592,8 @@
 
                     // 使用正则验证一下
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*){1,2})\s*(column){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|(column\s*){1,2})\s*(column){0,1}\s*)+$/g);
-                    if ("order by" !== clause && !reg.test(tool.arrayToNewArrayByProperty(columns, "variant", (column) => "alias" !== column.variant).join(" "))) {
+                    let str = tool.arrayToNewArrayByProperty(columns, "variant", (column) => ["alias"].indexOf(column.variant) < 0).join(" ");
+                    if ("order by" !== clause && !reg.test(str)) {
 
                         throw tool.makeErrorObjOfRegError(columns, clause + " clause error");
                     }
@@ -1543,7 +1636,8 @@
 
                     // 使用正则验证一下
                     let reg = new RegExp(/^((\s*left)*(\s*operator)*(\s*right)*\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/);
-                    if (!reg.test(tool.arrayToNewArrayByProperty(items, "variant").join(" "))) {
+                    let str = tool.arrayToNewArrayByProperty(items, "variant").join(" ");
+                    if (!reg.test(str)) {
 
                         throw tool.makeErrorObjOfRegError(items, clause + " clause error");
                     }
@@ -1555,7 +1649,8 @@
 
                     // 使用正则验证一下
                     let reg = new RegExp(/^\s*((database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(column){0,1}\s*(sort){0,1}\s*)(|recursive\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*(column){0,1}\s*(sort){0,1}\s*)+$/g);
-                    if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant", (column) => "alias" !== column.variant).join(" "))) {
+                    let str = tool.arrayToNewArrayByProperty(first, "variant", (column) => ["alias"].indexOf(column.variant) < 0).join(" ");
+                    if (!reg.test(str)) {
 
                         throw tool.makeErrorObjOfRegError(first, "order by clause error");
                     }
@@ -1567,7 +1662,8 @@
 
                     // 使用正则验证一下
                     let reg = new RegExp(/^\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*$/g);
-                    if (!reg.test(tool.arrayToNewArrayByProperty(first, "variant").join(" "))) {
+                    let str = tool.arrayToNewArrayByProperty(first, "variant").join(" ");
+                    if (!reg.test(str)) {
 
                         throw tool.makeErrorObjOfRegError(first, "group by clause error");
                     }
@@ -1664,37 +1760,24 @@
                 // 折叠出 Grouping 类型的节点
                 collapsingGroupingTypeNode(root, sub_query_level) {
 
+                    let keyword = constContainer.referenceTable.collapsedGrouping;
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
-                    let length = ast_outline.length;
+                    for (let i = 0; ast_outline[i]; ++i) {
 
-                    for (let i = 0; i <= length - 1; ++i) {
+                        let node = ast_outline[i];
+                        let pre_node = ast_outline[i - 1];
+                        if (!pre_node || keyword.indexOf(pre_node.value) < 0) {
 
-                        let node = ast_outline[i], pre_node = ast_outline[i - 1];
+                            continue;
+                        }
 
-                        if ((node && "close" !== node.variant) && (("function" === node.type) || ("expression" === node.type && "Keyword" !== node.token))) {
+                        // 如果 pre_node 是from节点, 那么 node 可能是子查询, 所以需要判断一下当前节点是否含有 node.value 来判断是否是可以捡入 node_grouping 中
+                        if (node.value) {
 
-                            let node_grouping = {type: "grouping", grouping: []};
-
-                            // 把所有连续的 expression 都打入 node_grouping 中
-                            let j = i;
-                            while (j <= length - 1 && "close" !== ast_outline[j].variant && ("function" === ast_outline[j].type || "expression" === ast_outline[j].type)) {
-
-                                if (pre_node && "limit" === pre_node.value && ["Numeric", "Punctuator"].indexOf(ast_outline[j].token) < 0 && "," !== ast_outline[j].value) {
-
-                                    ++j;
-                                    continue;
-                                }
-
-                                node_grouping.grouping.push(ast_outline[j]);
-                                delete ast_outline[j];
-                                ++j;
-                            }
-                            pre_node && (node_grouping['for'] = pre_node.variant);
-
-                            // 从 i 至 j-1 都是连续的expression
-                            ast_outline[i] = node_grouping;
-
-                            i = j;
+                            // 把所有连续的 expression 都捡入 node_grouping 中
+                            let obj = tool.pickContinuousExpression.ofGrouping(i, keyword, ast_outline, pre_node.value);
+                            ast_outline[i] = obj.node_grouping;
+                            i = obj.end;
                         }
                     }
                 },
@@ -1704,55 +1787,24 @@
 
                     // 整理出来 Subquery, Grouping 之类的
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, sub_query_level);
-                    let length = ast_outline.length;
 
-                    for (let i = 0; ast_outline[i] && ast_outline[i].value; ++i) {
+                    for (let i = 0; ast_outline[i]; ++i) {
+
+                        let node = ast_outline[i], pre_node = ast_outline[i - 1];
+                        if (!ast_outline[i - 1]) {
+
+                            continue;
+                        }
 
                         // 如果出现子查询, 则全部都加到query中
-                        if ("(" === ast_outline[i].value && ast_outline[i - 1] && ast_outline[i - 1].value === "from") {
+                        if ("left_bracket" === node.variant && pre_node.variant === "from") {
 
                             // 找出 end 节点
-                            let stack = [], end = -1;
-                            for (let j = i + 1; ast_outline[j]; ++j) {
-
-                                if ("(" === ast_outline[j].value) {
-
-                                    stack.push("(");
-                                } else if (")" === ast_outline[j].value && stack.length === 0) {
-
-                                    end = j - 1;
-                                    break;
-                                } else if (")" === ast_outline[j].value && "(" === stack[stack.length - 1]) {
-
-                                    stack.pop();
-                                }
-
-                                if (!ast_outline[j + 1]) {
-
-                                    end = j;
-                                    break;
-                                }
-                            }
-                            if (end < 0) {
-
-                                throw tool.makeErrorObj(false, "No match Subquery");
-                            }
+                            let end = tool.bracketMatchedByStack(i + 1, ast_outline);
 
                             // 把所有连续的 expression 都打入 node_subquery 中
-                            let node_subquery = {type: "subquery", subquery: [], sub_query_level: sub_query_level};
-                            for (let j = i + 1; j <= end && ast_outline[j]; ++j) {
-
-                                if (ast_outline[i].index !== ast_outline[j].index) {
-
-                                    node_subquery.subquery.push(ast_outline[j]);
-                                    delete ast_outline[j];
-                                } else {
-
-                                    delete ast_outline[j];
-                                    break;
-                                }
-                            }
-                            ast_outline[i] = node_subquery;
+                            ast_outline[i] = tool.pickContinuousExpression.ofSubquery(i + 1, end, sub_query_level, ast_outline);
+                            break; // 就算是不break,由于未重建索引, 不会再存在i+1节点了, 所以走到for循环那里也不会通过ast_outline[i]条件的
                         }
                     }
                 },
@@ -1762,40 +1814,16 @@
 
                     // 整理出来 Subquery, Grouping 之类的
                     let ast_outline = tool.returnASTOutlineBySubQueryLevel(root, union_level);
-                    let length = ast_outline.length;
 
-                    for (let i = 0; ast_outline[i] && ast_outline[i].value; ++i) {
+                    for (let i = 0; ast_outline[i]; ++i) {
 
-                        // 如果出现子查询, 则全部都加到query中
-                        if ("union" === ast_outline[i].value) {
+                        if ("union" !== ast_outline[i].value) {
 
-                            // 找出 end 节点
-                            let start = i + 1,
-                                end = length - 1,
-                                node_subquery = {type: "union", union: [], union_level: union_level};
-
-                            if (ast_outline[i + 1] && "all" === ast_outline[i + 1].value) {
-
-                                start = i + 2;
-                                node_subquery.type = "union all"
-                            }
-
-
-                            // 把所有连续的 expression 都打入 node_subquery 中
-                            for (let j = start; j <= end && ast_outline[j]; ++j) {
-
-                                if (ast_outline[i].index !== ast_outline[j].index) {
-
-                                    node_subquery.union.push(ast_outline[j]);
-                                    delete ast_outline[j];
-                                } else {
-
-                                    delete ast_outline[j];
-                                    break;
-                                }
-                            }
-                            ast_outline[i] = node_subquery;
+                            continue;
                         }
+
+                        // 把所有连续的 expression 都打入 node_union 中
+                        ast_outline[i] = tool.pickContinuousExpression.ofUnion(i, union_level, ast_outline);
                     }
                 },
 
@@ -2390,6 +2418,7 @@
 
                     // 词法分析
                     debugMsg("Lexical Analysis ...", debugColor.loading);
+                    debugMsg("pure sql : " + sql);
                     debugMsg("Clear SQL ... Results are as follows", debugColor.info);
                     compiler.lexicalAnalysis.clear();
                     debugMsg(this.steps.lexicalAnalysis.getSQLCleared());
@@ -2545,6 +2574,8 @@
 
                             if ("subquery" === property) {
 
+                                --sub_query_level;
+
                                 indent -= 4;
                                 sql = sql + "\n" + tool.makeContinuousStr(indent) + (sub_query_level === sub_query_num ? "" : ")");
                                 ++enters;
@@ -2595,8 +2626,6 @@
                     enters: enters,
                 };
             },
-
-            //
 
             // 自动化测试
             testing(n = 10) {

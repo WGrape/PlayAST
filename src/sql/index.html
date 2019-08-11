@@ -206,10 +206,14 @@
             let i = 1;
             for (let sql of sqls) {
 
+                sql_review_obj.SQLCompilerAPI.debug(sql);
+
                 $("#TestingBlock ul").append("<li><i>" + i + ".</i><span class='sql-example-" + i + "'>" + sql + "</span><button class='btn-copy' data-clipboard-target='.sql-example-" + i + "'>copy" + "</button><span style='color:#0d940d;display: block;padding-top: 5px;border-bottom:1px solid #eee;margin-bottom: 10px;'>success</span>" + "</li>");
                 new ClipboardJS('.btn-copy');
                 ++i;
             }
+
+            $("#TestingBlock ul").prepend("<li style='margin-bottom: 20px;'><i style='color:#0d940d;'>Congratulations ！100条SQL已全部通过测试 ！</i></li>");
 
         } catch (e) {
 

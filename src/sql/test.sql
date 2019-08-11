@@ -125,4 +125,17 @@ select column1 as alias_column1, max( column1 , param2 ), table1.column1, sum( d
 select column1 as alias_column1, max( column1 , param2 ), table1.column1, sum( db1.table1.column1 , param2 ) from ( select *, max( db2.table2.column2 , param2 ), *, round( column1 , param2 ) from db.table1, table1, db.table1, table1 where db2.table2.column2 >= d_fake AND db2.table2.column2 = 2927 AND column1 <> p_fake AND column1 as alias_column1 is null r_fake order by db1.table1.column1 alias_column1, * desc, table2.column2 alias_column2 asc, table1.column1 alias_column1 limit 9734 ) where db1.table1.column1 != z_fake AND db2.table2.column2 like h_fake AND table1.column1 alias_column1 like n_fake AND db1.table1.column1 is null e_fake order by column1 alias_column1, column1 as alias_column1 desc, table2.column2 alias_column2 asc, table2.column2 alias_column2 limit 5567 , 58 union select table1.column1 as alias_column1, now( table1.column1 alias_column1 , param2 ), table2.column2, max( table1.column1 alias_column1 , param2 ) from db.table1, table1, db.table1, table1 where column1 as alias_column1 like l_fake AND table2.column2 is not null 6754 AND table2.column2 != c_fake AND column1 < h_fake order by column1, table1.column1 as alias_column1 desc, * asc, * limit 3782
 
 
+select column1 as alias_column1, avg( table2.column2 alias_column2 , param2 ), table1.column1 alias_column1 from ( select table2.column2, sum( db1.table1.column1 alias_column1 , param2 ), * from table1, table1, db.table1 where db1.table1.column1 alias_column1 >= 6210 AND table1.column1 as alias_column1 like "u_fake" AND column1 as alias_column1 != "g_fake" order by table1.column1 as alias_column1, db2.table2.column2 desc, table1.column1 alias_column1 asc limit 6206 ) where table1.column1 = "b_fake" AND table1.column1 as alias_column1 > 2591 AND column1 <= 6710 order by db2.table2.column2, table2.column2 desc, column1 alias_column1 asc limit 6098 , 4004 union select column1 as alias_column1, length( table1.column1 as alias_column1 , param2 ), column1 alias_column1 from table1, table1, table1 where table1.column1 alias_column1 is null AND table1.column1 = 8318 AND db1.table1.column1 >= "b_fake" order by column1 alias_column1, column1 alias_column1 desc, column1 asc limit 4334 , 3187
+
+select * from ( select * from test )
+
+select * from ( select * from test )
+
+select * from ( select * from test )
+
+select column1, avg( param2 ), table1.column1 from ( select table2.column2, * from table1 where column1 as alias_column1 != "g_fake" order by table1.column1 asc limit 6206 )
+ where column1 <= 6710
+ order by column1 asc limit 6098 , 4004
+union select column1 as alias_column1, length( table1.column1 as alias_column1 , param2 ), column1 alias_column1 from table1, table1, table1 where table1.column1 alias_column1 is null AND table1.column1 = 8318 AND db1.table1.column1 >= "b_fake" order by column1 alias_column1, column1 alias_column1 desc, column1 asc limit 4334 , 3187
+
 
