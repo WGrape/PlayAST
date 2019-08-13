@@ -159,9 +159,6 @@ SELECT * FROM Persons WHERE ( ( id > 0 ) OR ( id < 87 ) OR (id > 23) ) and ( id 
 
 SELECT * FROM Persons WHERE LastName IN ('Adams','Carter');
 
-
-
-
-
+SELECT * FROM Persons WHERE LastName ( BETWEEN 'Adams' AND COUNT( 'Carter' ) AND test > 76 ) ;
 
 
