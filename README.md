@@ -35,7 +35,7 @@ PlayAST : 抽象语法树的设计与实现 ( PlayAST : Play With Abstract Synta
 3. 子查询 和 UNION 同时使用 \[ 不超过3个,如select * from ( select * from test union select * from test ) ]
 3. 支持 INSERT, DELETE, SELECT, UPDATE 4种操作, 除SELECT操作部分支持外, 其他3种操作都全部支持
 4. 查询支持 *, AS, (LEFT,RIGHT,INNER)JOIN, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT
-5. 运算符支持 LIKE, >, =, <, >=, <=, !=, <>, IS NULL, IS NOT NULL
+5. 运算符支持 LIKE, >, =, <, >=, <=, !=, <>, IS NULL, IS NOT NULL, AND, &&, OR, BETWEEN, NOT BETWEEN, IN
 6. 函数支持 distinct, count, from_unixtime, avg, sum, max, min, round, mid, len, first, last, format, concat, length, char_length, upper, lower, year, now
 
 #### 示例

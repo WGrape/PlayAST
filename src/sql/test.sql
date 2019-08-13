@@ -143,4 +143,25 @@ SELECT db1.table1.column1 , LENGTH( db1.table1.column1 alias_column1 , param2 ) 
 
 select * from test having sum( linetotal ) > $1000000.00 and avg( orderqty ) < 3 ;
 
+SELECT COUNT(*) AS count, AVG(balance) AS average_balance, SUM(balance) AS sum_balance FROM elasticsearch where (age >= 27 and age <= 30) or city like 'a%' group by gender, age
+
+SELECT COUNT( s )
+FROM table_name
+WHERE ( id > 6 AND id < 87 AND id > 23 AND id < 87 ) OR ( id>19 ) ;
+
+
+SELECT COUNT( s ) FROM table_name WHERE ( id > 6 AND id < 87 AND id > 23 AND id < 87 ) OR ( id>19 ) ;
+
+SELECT * FROM Persons WHERE LastName IN ('Adams','Carter');
+
+
+SELECT * FROM Persons WHERE ( ( id > 0 ) OR ( id < 87 ) OR (id > 23) ) and ( id < 87 ) ;
+
+SELECT * FROM Persons WHERE LastName IN ('Adams','Carter');
+
+
+
+
+
+
 

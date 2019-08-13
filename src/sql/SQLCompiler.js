@@ -80,6 +80,7 @@
                     "having": 20022,
                     "union": 20023,
                     "is": 20024,
+                    "or": 20025,
                 },
 
                 updateStatement: {
@@ -469,6 +470,8 @@
                 ",": "recursive",
                 "and": "recursive",
                 "&&": "recursive",
+                "||": "recursive",
+                "or": "recursive",
                 "*": "column",
                 ".": "object operator",
                 // "on": "",
@@ -484,6 +487,9 @@
                 "<>": "operator",
                 "like": "operator",
                 "is": "operator",
+                "in": "operator",
+                "between": "operator",
+                "not between": "operator",
 
                 "null": "Numeric",
 
@@ -834,6 +840,18 @@
         },
 
         pickContinuousExpression: {
+
+            ofBracket(from, end, nodes) {
+
+                let node_bracket = {type: "bracket", bracket: []};
+                for (let j = from; j <= end && nodes[j]; ++j) {
+
+                    node_bracket.bracket.push(nodes[j]);
+                    delete nodes[j];
+                }
+
+                return node_bracket;
+            },
 
             ofSubquery(from, end, sub_query_level, ast_outline) {
 
@@ -1366,6 +1384,7 @@
 
                 // 最后 sensing grouping 即可
                 this.sensing.sensingGrouping(root, sub_query_level);
+                root = tool.pruningAST.collapsing.rebuildASTIndex(root);// 最后再重建一下索引, 因为understandWhere那里又有删除节点的操作
 
                 return root;
             },
@@ -1630,9 +1649,9 @@
                 understandWhereExprList(items, clause = "where") {
 
                     let operator_num = 0;
-                    let length = items.length;
-                    for (let i = 0; i <= length - 1; ++i) {
+                    for (let i = 0; items[i]; ++i) {
 
+                        let pre_item = items[i - 1];
                         let item = items[i];
 
                         if ("set" === clause && "operator" === item.variant && "=" !== item.value) {
@@ -1640,6 +1659,16 @@
                             throw tool.makeErrorObjOfRegError(item, "operator error, set clause must be equal operator");
                         }
 
+                        if ("left_bracket" === item.variant) {
+
+                            // 找出 end 节点
+                            let end = tool.bracketMatchedByStack(i + 1, items);
+                            delete items[i];
+                            items[i] = tool.pickContinuousExpression.ofBracket(i + 1, end, items);
+                            items[i].variant = "right";
+                            i = end;
+                            continue;
+                        }
                         // 运算符和间断符
                         if ("operator" === item.variant) {
 
@@ -1648,7 +1677,7 @@
                             continue;
                         } else if ("recursive" === item.variant) {
 
-                            ++operator_num;
+                            operator_num = ("left" === pre_item.variant) ? (operator_num + 2) : (operator_num + 1)
                             continue;
                         }
 
@@ -1662,9 +1691,12 @@
                         }
                     }
 
+                    items = tool.pruningAST.collapsing.rebuildASTIndex(items); // 因为前面的循环中又做了删除节点的操作
+
                     // 使用正则验证一下
-                    let reg = new RegExp(/^((\s*left)*(\s*operator)*(\s*right)*\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/);
-                    let str = tool.arrayToNewArrayByProperty(items, "variant").join(" ");
+                    // let reg = new RegExp(/^((\s*left)*(\s*operator)*(\s*right)*\s*)(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/);
+                    let reg = new RegExp(/^(((\s*left)*(\s*operator)*(\s*right)*\s*)|(((\s*left)*(\s*operator)*(\s*right)*\s*recursive\s*left)))(\s*recursive\s*(\s*left)+\s*operator(\s*right)+\s*)*$/);
+                    let str = tool.arrayToNewArrayByProperty(items, "variant", (expr) => ["left_bracket", "right_bracket"].indexOf(expr.variant) < 0).join(" ");
                     if (!reg.test(str)) {
 
                         throw tool.makeErrorObjOfRegError(items, clause + " clause error");
@@ -1687,14 +1719,6 @@
                 understandGroupByExprList(first) {
 
                     tool.pruningAST.sensing.understandColumnList(first, "group by");
-
-                    // 使用正则验证一下
-                    let reg = new RegExp(/^\s*(database\s*object operator\s*table\s*object operator\s*column|table\s*object operator\s*column|column)\s*$/g);
-                    let str = tool.arrayToNewArrayByProperty(first, "variant").join(" ");
-                    if (!reg.test(str)) {
-
-                        throw tool.makeErrorObjOfRegError(first, "group by clause error");
-                    }
                 },
 
                 understandValueList(values) {
@@ -1890,8 +1914,8 @@
 
                         if ("insert" !== globalVariableContainer.statement_type && ast_outline[i] && "Keyword" !== ast_outline[i].token && ast_outline[i + 1] && "(" === ast_outline[i + 1].value) {
 
-                            // 疑似函数, 但此并不是支持的函数
-                            throw tool.makeErrorObj(ast_outline[i].index, ast_outline[i].value + "不是所支持的函数");
+                            // 疑似函数, 但此并不是支持的函数, 暂时不检查不存在的函数, 因为可能会存在一些自定义的函数
+                            // throw tool.makeErrorObj(ast_outline[i].index, ast_outline[i].value + "不是所支持的函数");
                         }
                     }
                 },
@@ -2028,7 +2052,7 @@
 
                         preClearBoundarySymbol(sql) {
 
-                            // 处理不必要的括号
+                            // 处理不必要的括号(OR运算符除外)
                             // 如果不是函数, 不是子查询 则就是不必要的括号
                             // 函数的区分方式是 当前字符是(, 且前面的字符不是空格, 是一个字符
                             // 子查询区分方式是 当前字符是(, 且前面的字符是空格
@@ -2047,18 +2071,26 @@
                                             continue;
                                         }
 
-                                        // 判断是否是values插入操作 :
                                         // 从下一个匹配的右括号开始向右找到第一个不为空格的字符为止
                                         for (j = tool.getStrNextTargetCharIndex(sql, ")", i) + 1; " " === sql[j]; ++j) {
                                         }
                                         if ("values" === sql.slice(j, j + 6).toLocaleLowerCase()) {
 
-                                            continue;
+                                            continue;// 判断是否是values插入操作 :
+                                        } else if ("or" === sql.slice(j, j + 2).toLocaleLowerCase()) {
+
+                                            continue;// 判断是否是or运算符
                                         }
+
+
                                         // 从当前字符开始向左搜到第一个不为空格的字符为止
                                         for (j = i - 1; " " === sql[j]; --j) {
                                         }
                                         if ("values" === sql.slice(j - 5, j + 1).toLocaleLowerCase()) {
+
+                                            continue;
+                                        }
+                                        if ("in" === sql.slice(j - 1, j + 1).toLocaleLowerCase()) {
 
                                             continue;
                                         }
@@ -2232,6 +2264,10 @@
                                 last_node.value += node.value;
                                 i++;
                                 continue;
+                            } else if ("not" === lexicon && "between" === next_lexicon) {
+
+                                node.value = "not between";
+                                i += 2;
                             } else {
 
                                 ++i;
@@ -2590,6 +2626,9 @@
                                 sql = sql + "\n" + tool.makeContinuousStr(indent) + obj['type'].toLocaleUpperCase();
                                 indent += 4;
                                 ++enters;
+                            } else if ("bracket" === property) {
+
+                                sql = sql + " (";
                             } else if ("function" === property) {
 
                                 sql = sql + " " + obj['function_name'].toLocaleUpperCase() + "(";
@@ -2611,6 +2650,9 @@
 
                                 indent -= 4;
                                 ++enters;
+                            } else if ("bracket" === property) {
+
+                                sql = sql + " )";
                             } else if ("function" === property) {
 
                                 sql = sql + " " + ")";
