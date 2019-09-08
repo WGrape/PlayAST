@@ -15,7 +15,8 @@
  * 12. 只要是括号匹配目前都可能有bug
  * 13. str[i] 替代 i<=length -1
  * 14. 未 diffingNodePropertyVariant 前用 value , diffingNodePropertyVariant 后 , 必须全部使用 variant , 除非例外
- * Author:Lvsi
+ * 15. A.* 的支持
+ * Author:WGrape
  */
 (function () {
 

@@ -161,4 +161,18 @@ SELECT * FROM Persons WHERE LastName IN ('Adams','Carter');
 
 SELECT * FROM Persons WHERE LastName ( BETWEEN 'Adams' AND COUNT( 'Carter' ) AND test > 76 ) ;
 
+SELECT A.name , C.x_id , C.xx_id , A.rr_id , SUM( B.xi / 10 ) xx , SUM( B.x ) AS xx , SUM( B.xx / 100 ) AS xx , C.xx , C.xx , A.xx
+FROM xx A
+LEFT JOIN xxx B ON A.x = B.xx
+LEFT JOIN xxx C ON A.xxx = C.x
+WHERE A.xxxx > 0 AND C.xxxx != 622 AND C.xxxx = 1 AND A.xxx = 1 AND B.xxx IS NULL
+GROUP BY A.xxx ;
+
+SELECT D.*,E.type
+FROM (
+       SELECT DISTINCT(C.id) order_id, B.*
+       FROM (SELECT A.cc, A.name, A.ll FROM users A WHERE t = 1 AND d = 1) B
+              INNER JOIN test C ON B.cc = C.cc
+     ) D
+       INNER JOIN dd E ON D.ee = E.cc WHERE E.d = 1 AND E.a = 5;
 
