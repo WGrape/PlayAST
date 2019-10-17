@@ -19,5 +19,15 @@
 - [LL分析器](https://zh.wikipedia.org/wiki/LL%E5%89%96%E6%9E%90%E5%99%A8)
 - [LL解析和LR解析](https://www.google.com/search?q=LL%E8%A7%A3%E6%9E%90%E5%92%8CLR%E8%A7%A3%E6%9E%90)
 - [ANTLR：在浏览器中玩语法解析](https://github.com/ProtoTeam/blog/blob/master/201712/2.md)
+- [parsing techniques 中文译本——《解析技术》](https://github.com/duguying/parsing-techniques)
+- [如何学习编译原理？](https://www.zhihu.com/question/21515496)
+- [C#为什么要形成IL中间代码，而不是直接生成机器代码?为了跨平台吗](https://blog.csdn.net/wishfly/article/details/2031171)
+- [程序的编译与解释有什么区别？](https://www.zhihu.com/question/21486706)
+- [编译与解释与JIT](https://www.google.com/search?q=%E7%BC%96%E8%AF%91%E4%B8%8E%E8%A7%A3%E9%87%8A%E4%B8%8EJIT)
+- [为什么需要中间代码](https://zhidao.baidu.com/question/345291484.html)
+- [扯淡：大白话聊聊编译那点事儿](https://awhisper.github.io/2017/02/26/%E6%89%AF%E6%B7%A1%EF%BC%9A%E5%A4%A7%E7%99%BD%E8%AF%9D%E8%81%8A%E8%81%8A%E7%BC%96%E8%AF%91%E9%82%A3%E7%82%B9%E4%BA%8B%E5%84%BF/)
+- [详解 Golang 中间代码生成](https://juejin.im/entry/5c661707f265da2d8e70d041)
+- [Compiler Theory(编译原理)、词法/语法/AST/中间代码优化在Webshell检测上的应用](https://www.cnblogs.com/LittleHann/p/4754446.html)
+
 
 
