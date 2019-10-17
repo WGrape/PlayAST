@@ -161,6 +161,13 @@ SELECT * FROM Persons WHERE LastName IN ('Adams','Carter');
 
 SELECT * FROM Persons WHERE LastName ( BETWEEN 'Adams' AND COUNT( 'Carter' ) AND test > 76 ) ;
 
+
+-- update 语句还有问题
+UPDATE db.sss sss ss ss s t_product_logistics
+SET year_str = "2012"
+WHERE id = 2 ;
+
+
 SELECT A.name , C.x_id , C.xx_id , A.rr_id , SUM( B.xi / 10 ) xx , SUM( B.x ) AS xx , SUM( B.xx / 100 ) AS xx , C.xx , C.xx , A.xx
 FROM xx A
 LEFT JOIN xxx B ON A.x = B.xx

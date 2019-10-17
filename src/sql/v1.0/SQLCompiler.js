@@ -2477,6 +2477,7 @@
                 globalVariableContainer.sql = sql;
                 globalVariableContainer.debug = true;
 
+                console.clear();
                 console.time("runtime");
 
                 try {

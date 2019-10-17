@@ -131,12 +131,13 @@
     let sql_input_obj = $("#SQL_Input");
     let json_renderer_obj = $("#JSON_Renderer");
 
+    // 格式化SQL
     function formatSQL() {
 
         let enter_px = 25; // 即1个换行符代表几个px像素
         let sql_format = sql_review_obj.SQLCompilerAPI.formatSQL();
         sql_input_obj.val(sql_format.sql);
-        sql_input_obj.css("height", enter_px * sql_format.enters); // 自适应高度
+        sql_input_obj.css("height", enter_px * sql_format.enters); // SQL输入域自适应高度
     }
 
     $(document).on("click", "#Go", function () {

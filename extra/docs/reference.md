@@ -9,4 +9,15 @@
 - [如何看待方舟编译器 8 月 31 日开源?](https://www.zhihu.com/question/343431810)
 - [华为公布的方舟编译器到底对安卓软件生态会有多大影响？](https://www.zhihu.com/question/319688949)
 - [轮子哥-跟vczh看实例学编译原理：实现Tinymoe的词法分析](http://www.cppblog.com/vczh/archive/2014/03/02/206014.html)
+- [Go语言编译的实现源码](https://github.com/golang/go/tree/master/src/go)
+- [Go源码目录结构](https://docs.kilvn.com/go-internals/ref2.html)
+- [编译器IR](https://www.google.com/search?q=编译器+IR)
+- [实现一个编译器需要实现哪些流程？](https://www.zhihu.com/question/36478912)
+- [面对舆论，方舟编译器首次公布源码分析及基础架构](https://www.infoq.cn/article/qcfC3pa21xGeWxiu5vq9)
+- [CCSql](https://github.com/QinZhuo/CCSql)
+- [基于LL算法实现的语法解析器生成器ANTLR](https://zh.wikipedia.org/wiki/ANTLR)
+- [LL分析器](https://zh.wikipedia.org/wiki/LL%E5%89%96%E6%9E%90%E5%99%A8)
+- [LL解析和LR解析](https://www.google.com/search?q=LL%E8%A7%A3%E6%9E%90%E5%92%8CLR%E8%A7%A3%E6%9E%90)
+- [ANTLR：在浏览器中玩语法解析](https://github.com/ProtoTeam/blog/blob/master/201712/2.md)
+
 
