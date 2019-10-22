@@ -127,29 +127,36 @@
 <script src="../../../debug/debug.js"></script>
 <script>
 
+    if ("undefined" === typeof $) {
+        $ = window.$;
+    }
+
     let sql_review_obj = $("#SQL_Review");
     let sql_input_obj = $("#SQL_Input");
     let json_renderer_obj = $("#JSON_Renderer");
+
+    function formatSQL() {
+
+        let enter_px = 25; // 即1个换行符代表几个px像素
+        let sql_format = sql_review_obj.SQLCompilerAPI.format();
+        sql_input_obj.val(sql_format.sql);
+        sql_input_obj.css("height", enter_px * sql_format.enters); // SQL输入域自适应高度
+    }
 
     $(document).on("click", "#Go", function () {
 
         try {
 
             let sql = sql_input_obj.val();
-
             sql_review_obj.text(sql);
-
-            scanner.init(sql);
-            console.log(scanner.props);
-
-            parser.init(scanner.props.tokens);
-            console.log(parser.props);
-
             json_renderer_obj.fadeOut(100);
-            json_renderer_obj.fadeIn(200);
 
-            let result = parser.props.ast;
+            sql_review_obj.SQLCompiler({sql: sql});
+
+            let result = sql_review_obj.SQLCompilerAPI.closure.parser.props.ast;
             let input = eval('(' + JSON.stringify(result) + ')');
+
+            formatSQL();
 
             json_renderer_obj.fadeIn();
             json_renderer_obj.jsonViewer(input, {collapsed: false, withQuotes: false});

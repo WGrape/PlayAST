@@ -5,3 +5,8 @@ select * from (
 ) C
 
 update db.table set name = "eason" where id = 10;
+
+select * from A  JOIN B where id>100 UNION select * from c
+
+
+

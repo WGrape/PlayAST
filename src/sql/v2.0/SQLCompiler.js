@@ -1,7 +1,6 @@
-(function(){
+(function () {
 
     const FSM = {
-
         SCANNER: {
             STATES: {
                 CHAR: 1,
@@ -9,7 +8,6 @@
                 HANDLE: 0,
             }
         },
-
         PARSER: {
             STATES: {
                 WORD: 1,
@@ -20,9 +18,7 @@
             }
         },
     };
-
     const WORD_TABLE = {
-
         // 序列
         "sequence": {
 
@@ -54,64 +50,30 @@
         },
     };
 
-    WORD_TABLE.sequence.keyword.any = (() => {
-
-        return WORD_TABLE.sequence.keyword.sentence.concat(
-            WORD_TABLE.terminator.punctuator.clause,
-            WORD_TABLE.terminator.punctuator.other,
-        );
-    })();
-
-    WORD_TABLE.terminator.punctuator.any = (() => {
-
-        return WORD_TABLE.terminator.punctuator.arithmetic.concat(
-            WORD_TABLE.terminator.punctuator.comparison,
-            WORD_TABLE.terminator.punctuator.constructors,
-            WORD_TABLE.terminator.punctuator.space,
-        );
-    })();
-
+    let globalVariableContainer = {
+        config: {},
+    };
     let tool = {
 
         error(e) {
 
-            e.trace = e.trace.replace(/\n/g, " ");
+            // e.trace = e.trace.replace(/\n/g, " ");
             throw e.msg + "\n\n" + e.trace + "\n\n" + e.seq;
         },
 
-        truncateSQL(end) {
-            return scanner.props.stream.slice(0, end + 1);
+        truncateStr(str, end) {
+            return str.slice(0, end + 1);
+        },
+
+        // 创建连续的字符串
+        makeContinuousStr(n, str = " ") {
+
+            return new Array(n + 1).join(str);
         },
 
         propertyIsObj(obj) {
 
             return $.isPlainObject(obj);
-        },
-
-        traverseObj(obj) {
-
-            if (!this.propertyIsObj(obj)) {
-
-                return;
-            }
-
-            let properties = Object.getOwnPropertyNames(obj);
-            for (let property of properties) {
-
-                if (Array.isArray(obj[property])) {
-
-                    for (let item of obj[property]) {
-
-                        this.traverseObj(item);
-                    }
-
-                } else if (tool.propertyIsObj(obj[property])) {
-
-                    this.traverseObj(obj[property]);
-                } else {
-
-                }
-            }
         },
 
         punctuatorMatchByStack(tokens, start, punctuator) {
@@ -135,7 +97,7 @@
                 default:
                     tool.error({
                         'msg': "can not match this error punctuator '" + punctuator + "'",
-                        "trace": "error near : " + this.truncateSQL(tokens[start].seq),
+                        "trace": "error near : " + this.truncateStr(scanner.props.stream, tokens[start].seq),
                         "seq": "seq: " + tokens[start].seq,
                     });
                     break;
@@ -156,12 +118,24 @@
 
             tool.error({
                 'msg': "no match this punctuator '" + punctuator + "'",
-                "trace": "error near : " + this.truncateSQL(tokens[start].seq),
+                "trace": "error near : " + this.truncateStr(scanner.props.stream, tokens[start].seq),
                 "seq": "seq: " + tokens[start].seq,
             });
         },
+
+        generateASTRootNode() {
+
+            return {
+                "node": "root",
+                "state": "handle",
+                "next_state": "sentence",
+                "next_index": 0,
+                "next": [],
+            };
+        }
     };
 
+    // 词法分析器
     let scanner = {
 
         props: {
@@ -178,9 +152,10 @@
         init(stream) {
 
             this.props.stream = stream;
-            this.props.length = stream.length;
 
+            this.before();
             this.start();
+            this.after();
         },
 
         start() {
@@ -194,15 +169,13 @@
                     this.fsm.events.flowtoWordState(sequence);
                 }
             }
-
-            this.after();
         },
 
         // 从输入区读取字符序列，读到终止符为止
         gets() {
 
             let stream = this.props.stream;
-            let length = this.props.length;
+            let length = stream.length;
             let seq = this.props.seq;
 
             for (let i = seq; i <= length - 1; ++i) {
@@ -229,7 +202,25 @@
                 }
             }
 
+            // stream最后的符号
+            if (seq === length - 1) {
+                this.props.seq = seq + 1;
+                return stream.slice(seq, seq + 1);
+            }
+
             return undefined;
+        },
+
+        // 前置处理
+        before() {
+
+            // 换行符替换为空格
+            this.props.stream = $.trim(this.props.stream.replace(/\n/g, " ").toLowerCase());
+
+            // 多个空格替换为1个空格
+            this.props.stream = $.trim(this.props.stream.replace(/\s+/g, " ").toLowerCase());
+
+            this.props.stream = this.props.stream.split(";")[0] + ";";
         },
 
         // 后置处理
@@ -298,22 +289,16 @@
         }
     };
 
+    // 语法解析器
     let parser = {
 
         props: {
 
             tokens: [], // token流
-            length: 0, // token流的长度
-            index: 0, // token流的序号
             wordTable: WORD_TABLE,
 
             // 产物
-            ast: {
-                "node": "root",
-                "next_state": "sentence",
-                "next_index": 0,
-                "next": [],
-            },
+            ast: tool.generateASTRootNode(),
         },
 
         fsm: {
@@ -484,8 +469,8 @@
             let ast_node = {
 
                 "node": node, // 节点类型 root, sentence, clause, expr, word
-                // "state": extra.state, // 分析时所处状态 root, sentence, clause, expr, word 等同于 node
-                // "next_state": extra.next_state, // 下一个跳转状态 sentence, clause, expr, word
+                "state": extra.state, // 分析时所处状态 root, sentence, clause, expr, word 等同于 node
+                "next_state": extra.next_state, // 下一个跳转状态 sentence, clause, expr, word
                 "next_index": 0, // next数组的下标
                 "next": [], // next数组, 新增的AST节点根据 next_index push 到目标 next 数组
             };
@@ -499,13 +484,200 @@
             }
 
             if ("{}" !== JSON.stringify(token)) {
-                //ast_node.token = token;
+                ast_node.token = token;
             }
 
             return ast_node;
         },
     };
 
+    // 语义分析器
+    let analyzer = {
 
+        props: {},
+
+        init() {
+
+        },
+
+        start() {
+
+        },
+
+        optimize: {
+
+            // 节点合并
+            combineNodes() {
+
+            },
+        }
+    };
+    let steps = {
+
+        clear: {
+
+            work() {
+
+                parser.props.ast = tool.generateASTRootNode();
+            }
+        },
+
+        lexicalAnalysis: {
+
+            work() {
+
+                let config = globalVariableContainer.config;
+                scanner.init(config.sql);
+            }
+        },
+
+        syntacticAnalysis: {
+
+            work() {
+
+                parser.init(scanner.props.tokens);
+            }
+        },
+
+        semanticAnalysis: {
+
+            work() {
+
+            }
+        }
+    };
+
+    let SQLCompiler = function (config = {sql: ""}) {
+
+        globalVariableContainer.config = Object.assign({sql: ""}, config);
+    };
+
+    SQLCompiler.prototype = {
+
+        tool: tool,
+        scanner: scanner,
+        parser: parser,
+        steps: steps,
+
+        boot() {
+
+            WORD_TABLE.sequence.keyword.any = (() => {
+
+                return WORD_TABLE.sequence.keyword.sentence.concat(
+                    WORD_TABLE.terminator.punctuator.clause,
+                    WORD_TABLE.terminator.punctuator.other,
+                );
+            })();
+            WORD_TABLE.terminator.punctuator.any = (() => {
+
+                return WORD_TABLE.terminator.punctuator.arithmetic.concat(
+                    WORD_TABLE.terminator.punctuator.comparison,
+                    WORD_TABLE.terminator.punctuator.constructors,
+                    WORD_TABLE.terminator.punctuator.need_match,
+                    WORD_TABLE.terminator.punctuator.space,
+                );
+            })();
+
+            this.init();
+        },
+
+        init() {
+
+            this.steps.clear.work();
+            this.steps.lexicalAnalysis.work();
+            this.steps.syntacticAnalysis.work();
+            this.steps.semanticAnalysis.work();
+        },
+    };
+
+    $.fn.extend({
+
+        SQLCompiler: function (config = {sql: ""}) {
+
+            return $(this).each(function () {
+
+                (new SQLCompiler(config)).boot();
+            });
+        },
+
+        SQLCompilerAPI: {
+
+            closure: {
+
+                tool: tool,
+                scanner: scanner,
+                parser: parser,
+            },
+
+            format() {
+
+                let sql = "";
+                let indents = 0; // 记录当前的缩进
+                let enters = 0; // 记录当前的行数
+                let indent_str = "";
+                let enter_str = "";
+
+                function traverseObj(obj) {
+
+                    if (!tool.propertyIsObj(obj)) {
+
+                        return;
+                    }
+
+                    let properties = Object.getOwnPropertyNames(obj);
+                    for (let property of properties) {
+
+                        // 属性值是数组
+                        if (Array.isArray(obj[property])) {
+
+                            for (let item of obj[property]) {
+
+                                traverseObj(item);
+                            }
+
+                        }
+
+                        // 属性值是对象
+                        else if (tool.propertyIsObj(obj[property])) {
+
+                            traverseObj(obj[property]);
+                        }
+
+                        // 属性值是字面值
+                        else {
+
+                            if ("state" === property) {
+
+                                if ("sentence" === obj[property] && "undefined" !== typeof obj['value']) {
+
+                                    indents = 0;
+                                    enter_str = tool.makeContinuousStr(enters === 0 ? 0 : 1, "\n");
+                                    sql += (enter_str + obj['value']);
+                                    ++enters;
+                                } else if ("clause" === obj[property] && "undefined" !== typeof obj['value']) {
+
+                                    // indents += 4;
+                                    indents = 4;
+                                    indent_str = tool.makeContinuousStr(indents, " ");
+                                    enter_str = tool.makeContinuousStr(1, "\n");
+                                    sql += (enter_str + indent_str + obj['value']);
+                                    ++enters;
+                                } else if (("expr" === obj[property] || "word" === obj[property]) && "undefined" !== typeof obj['value']) {
+
+                                    sql += obj['value'];
+                                }
+                            }
+                        }
+                    }
+                }
+
+                traverseObj(parser.props.ast);
+                return {
+                    sql: sql,
+                    enters: enters,
+                };
+            },
+        },
+    });
 
 })();
