@@ -76,6 +76,13 @@
             return $.isPlainObject(obj);
         },
 
+        // 因为折叠会出现索引连续不上和length不变的情况, 故而需要清理掉zombie数据
+        rebuildASTIndex(obj) {
+
+            let obj_str = JSON.stringify(obj);
+            return JSON.parse(obj_str.replace(/,null/g, ""));
+        },
+
         punctuatorMatchByStack(tokens, start, punctuator) {
 
             let stack = [], length = tokens.length, need_found_punctuator;
@@ -132,6 +139,11 @@
                 "next_index": 0,
                 "next": [],
             };
+        },
+
+        isUndefined(obj) {
+
+            return "undefined" === typeof obj;
         }
     };
 
@@ -161,7 +173,7 @@
         start() {
 
             let sequence = "";
-            while ("undefined" !== typeof (sequence = this.gets())) {
+            while (!tool.isUndefined(sequence = this.gets())) {
 
                 if (sequence.length < 2) {
                     this.fsm.events.flowtoCharState(sequence);
@@ -220,7 +232,12 @@
             // 多个空格替换为1个空格
             this.props.stream = $.trim(this.props.stream.replace(/\s+/g, " ").toLowerCase());
 
+            // 最后添加分号
             this.props.stream = this.props.stream.split(";")[0] + ";";
+
+            // tokens 情空
+            this.props.tokens = [];
+            this.props.seq = 0;
         },
 
         // 后置处理
@@ -233,7 +250,7 @@
                     continue;
                 }
 
-                if ("undefined" !== typeof (token.match_index)) {
+                if (!tool.isUndefined(token.match_index)) {
                     continue;
                 }
 
@@ -335,9 +352,9 @@
                     if (clause_node.next_index >= clause_node.next.length) {
 
                         let expression = "";
-                        if ("undefined" !== typeof (clause_node.value)) {
+                        if (!tool.isUndefined(clause_node.value)) {
                             expression = clause_node.value;
-                        } else if ("undefined" !== typeof (sentence_node.value)) {
+                        } else if (!tool.isUndefined(sentence_node.value)) {
                             expression = sentence_node.value;
                         }
                         clause_node.next.push(parser.generateASTNode("expr", {}, {
@@ -475,11 +492,11 @@
                 "next": [], // next数组, 新增的AST节点根据 next_index push 到目标 next 数组
             };
 
-            if ("undefined" !== typeof (token.value)) {
+            if (!tool.isUndefined(token.value)) {
                 ast_node.value = token.value;
             }
 
-            if ("undefined" !== typeof (extra.expression)) {
+            if (!tool.isUndefined(extra.expression)) {
                 ast_node.expression = extra.expression;
             }
 
@@ -498,10 +515,12 @@
 
         init() {
 
+            this.start();
         },
 
         start() {
 
+            this.optimize.combineNodes();
         },
 
         optimize: {
@@ -509,9 +528,56 @@
             // 节点合并
             combineNodes() {
 
+                // group by, order by, left/right/inner join
+                for (let i = 0; i <= parser.props.ast.next.length - 1; ++i) {
+
+                    let sentence_node = parser.props.ast.next[i];
+                    let clause_nodes = sentence_node.next;
+                    for (let i = 0; i <= clause_nodes.length - 1; ++i) {
+
+                        let current_clause_node = clause_nodes[i];
+                        if (tool.isUndefined(current_clause_node) || tool.isUndefined(current_clause_node.value)) {
+                            continue;
+                        }
+
+                        // 合并 join
+                        if (["left", "right", "inner"].indexOf(current_clause_node.value) > -1) {
+
+                            // 只有前置, 没有join
+                            let next_clause_node = clause_nodes[i + 1];
+                            if (tool.isUndefined(next_clause_node) || "join" !== next_clause_node.value) {
+
+                                let seq = clause_nodes[i].token.seq - 1 + clause_nodes[i].value.length;
+                                tool.error({
+                                    "msg": "incorrect join expression",
+                                    "trace": tool.truncateStr(scanner.props.stream, seq),
+                                    "seq": seq
+                                });
+                            }
+
+                            // 合并 join 后，由于left和join后面都有空格造成了多余空格的情况，所以需要删除一个空格
+                            let n_index = next_clause_node.next_index;
+                            let expr_node = next_clause_node.next[n_index];
+                            let word_node = expr_node.next[0];
+                            if (!tool.isUndefined(word_node) && " " === word_node.value) {
+                                delete (expr_node.next[0]);
+                            }
+
+                            // 实现 join 合并
+                            clause_nodes[i].value = clause_nodes[i].value + " join"; // concat
+                            clause_nodes[i].next = clause_nodes[i].next.concat(next_clause_node.next); // attach
+
+                            // 删除 join 并对 null 处理
+                            delete (clause_nodes[i + 1]); // 删除(注 delete next_clause_node 无效)
+                            sentence_node.next = tool.rebuildASTIndex(sentence_node.next);
+                        }
+                    }
+                }
             },
         }
     };
+
+    // 前端过程步骤
     let steps = {
 
         clear: {
@@ -543,6 +609,7 @@
 
             work() {
 
+                analyzer.init();
             }
         }
     };
@@ -648,13 +715,13 @@
 
                             if ("state" === property) {
 
-                                if ("sentence" === obj[property] && "undefined" !== typeof obj['value']) {
+                                if ("sentence" === obj[property] && !tool.isUndefined(obj['value'])) {
 
                                     indents = 0;
                                     enter_str = tool.makeContinuousStr(enters === 0 ? 0 : 1, "\n");
                                     sql += (enter_str + obj['value']);
                                     ++enters;
-                                } else if ("clause" === obj[property] && "undefined" !== typeof obj['value']) {
+                                } else if ("clause" === obj[property] && !tool.isUndefined(obj['value'])) {
 
                                     // indents += 4;
                                     indents = 4;
@@ -662,7 +729,7 @@
                                     enter_str = tool.makeContinuousStr(1, "\n");
                                     sql += (enter_str + indent_str + obj['value']);
                                     ++enters;
-                                } else if (("expr" === obj[property] || "word" === obj[property]) && "undefined" !== typeof obj['value']) {
+                                } else if (("expr" === obj[property] || "word" === obj[property]) && !tool.isUndefined(obj['value'])) {
 
                                     sql += obj['value'];
                                 }
