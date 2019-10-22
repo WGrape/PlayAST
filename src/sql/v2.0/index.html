@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+
+    <link rel="stylesheet" type="text/css" href="http://www.jq22.com/jquery/bootstrap-3.3.4.css">
+    <link href="../../../plug/json-viewer/css/jquery.json-viewer.css" type="text/css" rel="stylesheet"/>
+
+    <style>
+
+        .block {
+
+            margin-top: 30px;
+        }
+
+        body {
+
+            width: 80%;
+            margin: 0 auto;
+            margin-top: 20px;
+        }
+
+        textarea {
+
+            display: block;
+            border: 1px solid #ddd;
+            width: 80%;
+            min-height: 150px;
+            padding: 10px;
+            font-size: 15px;
+            max-width: 100%;
+        }
+
+        button {
+
+            display: inline-block;
+            padding: 10px 15px;
+            background: green;
+            color: #FFF;
+            width: 120px;
+            border: none;
+            margin-top: 17px;
+            margin-right: 20px;
+        }
+
+        button.btn-copy {
+
+            padding: 3px 5px;
+            width: auto;
+            margin: auto;
+            margin-left: 5px;
+            border-radius: 10px;
+            background: #4079de;
+            font-size: 10px;
+        }
+
+        #JSON_Renderer {
+
+            display: none;
+        }
+
+        #Debug {
+
+            background: #FF9800;
+        }
+
+        #Testing {
+
+            background: blue;
+        }
+
+        #TestingBlock {
+
+        }
+
+        #TestingBlock ul {
+
+            padding-left: 0;
+        }
+
+        #TestingBlock ul li {
+
+            padding: 5px 10px 5px 0;
+            list-style: none;
+            font-size: 15px;
+            color: #888;
+            text-align: justify;
+        }
+
+        #TestingBlock ul li i {
+
+            font-size: 20px;
+            font-weight: bold;
+            color: #000;
+            margin-right: 5px;
+        }
+    </style>
+
+</head>
+
+<body>
+
+<p id="SQL_Review"></p>
+
+<textarea id="SQL_Input">select * from A where id>100</textarea>
+
+<button id="Go">Go</button>
+
+<button id="Debug">Debug</button>
+
+<button id="Testing">Testing</button>
+
+<div class="block" id="TestingBlock">
+    <ul></ul>
+</div>
+
+<div class="block">
+    <pre id="JSON_Renderer" style="padding-left: 30px;"></pre>
+</div>
+
+<script src="https://cdn.bootcss.com/jquery/2.2.1/jquery.min.js"></script>
+<script src="https://cdn.bootcss.com/clipboard.js/2.0.4/clipboard.js"></script>
+<script src="../../../plug/json-viewer/js/jquery.json-viewer.js"></script>
+<script src="SQLCompiler.js"></script>
+<script src="../../../debug/debug.js"></script>
+<script>
+
+    let sql_review_obj = $("#SQL_Review");
+    let sql_input_obj = $("#SQL_Input");
+    let json_renderer_obj = $("#JSON_Renderer");
+
+    $(document).on("click", "#Go", function () {
+
+        try {
+
+            let sql = sql_input_obj.val();
+
+            sql_review_obj.text(sql);
+
+            scanner.init(sql);
+            console.log(scanner.props);
+
+            parser.init(scanner.props.tokens);
+            console.log(parser.props);
+
+            json_renderer_obj.fadeOut(100);
+            json_renderer_obj.fadeIn(200);
+
+            let result = parser.props.ast;
+            let input = eval('(' + JSON.stringify(result) + ')');
+
+            json_renderer_obj.fadeIn();
+            json_renderer_obj.jsonViewer(input, {collapsed: false, withQuotes: false});
+
+        } catch (e) {
+
+            alert(e);
+            // throw e;
+        }
+    });
+
+</script>
+
+</body>
+
+</html>
