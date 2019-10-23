@@ -151,7 +151,7 @@
             return "undefined" === typeof obj;
         },
 
-        implodeArrByField(arr, field) {
+        implodeArrByField(arr, field = "value") {
 
             let str = "";
             for (let item of arr) {
@@ -161,7 +161,7 @@
                 }
             }
 
-            return str;
+            return str.trim();
         },
 
         // 从start处开始, 寻找下一个 ch 的
@@ -198,6 +198,21 @@
 
         trimStringArray(arr) {
         },
+
+        // 语句类型: select, update, delete, insert
+        judgeSQLType(sql) {
+
+            let types = ["select", "update", "delete", "insert"];
+            for (let type of types) {
+
+                if (sql.indexOf(type) > -1) {
+
+                    return type;
+                }
+            }
+
+            this.error({"msg": "Illegal Statement", "trace": sql});
+        }
     };
 
     // 词法分析器
@@ -208,6 +223,7 @@
             stream: "", // 字符流
             length: 0, // 字符流的长度
             seq: 0, // 字符流的序号
+            sql_type: "select", // 语句类型
             wordTable: WORD_TABLE,
 
             // 产物
@@ -291,6 +307,8 @@
             // tokens 情空
             this.props.tokens = [];
             this.props.seq = 0;
+
+            this.props.sql_type = tool.judgeSQLType(this.props.stream);
         },
 
         // 后置处理
@@ -485,24 +503,82 @@
 
                 go() {
 
-                    this.parsingSentenceOfSelect();
-                    this.parsingSentenceOfUpdate();
-                    this.parsingSentenceOfDelete();
-                    this.parsingSentenceOfInsert();
+                    switch (scanner.props.sql_type) {
+
+                        case "select":
+                            this.parsingSentenceOfSelect();
+                            break;
+
+                        case "update":
+                            this.parsingSentenceOfUpdate();
+                            break;
+
+                        case "delete":
+                            this.parsingSentenceOfDelete();
+                            break;
+
+                        case "insert":
+                            this.parsingSentenceOfInsert();
+                            break;
+
+                        default:
+                            this.error({"msg": "Illegal Statement", "trace": sql});
+                            break;
+                    }
                 },
 
                 parsingSentenceOfSelect() {
 
                     let sentence_nodes = parser.props.ast.next;
 
+                    // 循环每一个语句
                     for (let i = 0; i <= sentence_nodes.length - 1; ++i) {
 
-                        if (i > 0) {
+                        let clause_nodes = sentence_nodes[i].next;
+                        for (let j = 0; j <= clause_nodes.length; ++j) {
 
-                            // 子查询的情况
+                            let expression = tool.implodeArrByField(clause_nodes[j].next);
 
-                            // 联合查询的情况
+                            if ("select" === clause_nodes[j].value) {
+
+                                parser.parsing.parsingExpr.parsingExpressionOfSelect(expression);
+                            } else if ("from" === clause_nodes[j].value) {
+
+                                // 如果最后一个是"(", 则说明为子查询
+                                if ("(" === expression[expression.length - 1]) {
+
+                                    parser.parsing.parsingExpr.parsingExpressionOfSubQuery(expression);
+                                } else {
+                                    parser.parsing.parsingExpr.parsingExpressionOfFrom(expression);
+                                }
+                            } else if ("union" === clause_nodes[j].value) {
+
+                                // 子查询
+                                parser.parsing.parsingExpr.parsingExpressionOfSubQuery(expression, "union");
+                            } else if (["left join", "right join", "inner join"].indexOf(clause_nodes[j].value) > -1) {
+
+                                parser.parsing.parsingExpr.parsingExpressionOfJoin(expression);
+                            } else if ("group" === clause_nodes[j].value) {
+
+                                if (expression.indexOf("by") === 0) {
+                                    expression = expression.slice(2).trim(); // 去掉by
+                                }
+                                parser.parsing.parsingExpr.parsingExpressionOfGroup(expression);
+                            } else if ("order" === clause_nodes[j].value) {
+
+                                if (expression.indexOf("by") === 0) {
+                                    expression = expression.slice(2).trim(); // 去掉by
+                                }
+                                parser.parsing.parsingExpr.parsingExpressionOfOrder(expression);
+                            } else if ("limit" === clause_nodes[j].value) {
+
+                                parser.parsing.parsingExpr.parsingExpressionOfLimit(expression);
+                            } else if ("having" === clause_nodes[j].value) {
+
+                                parser.parsing.parsingExpr.parsingExpressionOfHaving(expression);
+                            }
                         }
+
                     }
                 },
 
@@ -647,6 +723,11 @@
                 // 解析 select 字段列表表达式
                 parsingExpressionOfSelect(expression) {
 
+                    let columns = expression.split(",");
+                    for (let column of columns) {
+
+                        this.common.parsingColumnOfDot(column, -1);
+                    }
                 },
 
                 // 解析 from 表达式
@@ -657,6 +738,17 @@
 
                 // 解析 order 表达式
                 parsingExpressionOfOrder(expression) {
+
+                    let columns = expression.split(/asc|desc/).join("").split(",");
+                    for (let column of columns) {
+
+                        this.common.parsingColumnOfDot(column, -1);
+                    }
+                },
+
+                // 解析 where 表达式
+                parsingExpressionOfJoin(expression) {
+
 
                 },
 
@@ -678,16 +770,43 @@
                 // 解析 group 表达式
                 parsingExpressionOfGroup(expression) {
 
+                    let columns = expression.split(",");
+                    for (let column of columns) {
+
+                        this.common.parsingColumnOfDot(column, -1);
+                    }
                 },
 
                 // 解析 Limit 表达式
                 parsingExpressionOfLimit(expression) {
 
+                    let numbers = expression.split(",");
+                    for (let number of numbers) {
+
+                        this.common.parsingNumber(number);
+                    }
                 },
 
+                // 解析 Having 表达式
                 parsingExpressionOfHaving(expression) {
 
+                    this.parsingExpressionOfWhere(expression);
                 },
+
+                // 解析 子查询 表达式
+                parsingExpressionOfSubQuery(expression, type = "from") {
+
+                    if ("from" === type) {
+
+                        return true;
+                    } else if ("union" === type && ("" === expression || "all" !== expression)) {
+
+                        return true;
+                    } else {
+
+                        tool.error({"msg": "Illegal sub_query", "trace": expression});
+                    }
+                }
             }
         },
 
@@ -725,7 +844,7 @@
             }
 
             // 开始解析
-            this.parsing.running();
+            //this.parsing.running();
         },
 
         // 生成AST节点
@@ -822,8 +941,6 @@
                     }
                 }
             },
-
-            // 解析子查询
 
         }
     };
@@ -931,10 +1048,13 @@
             format() {
 
                 let sql = "";
-                let indents = 0; // 记录当前的缩进
-                let enters = 0; // 记录当前的行数
-                let indent_str = "";
-                let enter_str = "";
+                let lines = 0; // 记录当前的行数
+                let sentence = 0;
+                let clause_indents = 0; // 记录当前的clause缩进
+                let sentence_indents = 0; // 记录当前的语句缩进
+
+                let indent_str = ""; // 缩进字符
+                let enter_str = ""; // 换行字符
 
                 function traverseObj(obj) {
 
@@ -969,18 +1089,24 @@
 
                                 if ("sentence" === obj[property] && !tool.isUndefined(obj['value'])) {
 
-                                    indents = 0;
-                                    enter_str = tool.makeContinuousStr(enters === 0 ? 0 : 1, "\n");
-                                    sql += (enter_str + obj['value'].toUpperCase());
-                                    ++enters;
+                                    sentence_indents = sentence * 8; // 语句缩进
+
+                                    enter_str = tool.makeContinuousStr(lines === 0 ? 0 : 1, "\n");
+                                    indent_str = tool.makeContinuousStr(sentence_indents, " ");
+
+                                    sql += (enter_str + indent_str + obj['value'].toUpperCase());
+                                    ++lines;
+
+                                    ++sentence;
                                 } else if ("clause" === obj[property] && !tool.isUndefined(obj['value'])) {
 
-                                    // indents += 4;
-                                    indents = 4;
-                                    indent_str = tool.makeContinuousStr(indents, " ");
+                                    // clause_indents += 4;
+                                    clause_indents = sentence_indents + 4; // 从句缩进
+
+                                    indent_str = tool.makeContinuousStr(clause_indents, " ");
                                     enter_str = tool.makeContinuousStr(1, "\n");
                                     sql += (enter_str + indent_str + obj['value'].toUpperCase());
-                                    ++enters;
+                                    ++lines;
                                 } else if (("expr" === obj[property] || "word" === obj[property]) && !tool.isUndefined(obj['value'])) {
 
                                     let val = obj['value'];
@@ -997,7 +1123,7 @@
                 traverseObj(parser.props.ast);
                 return {
                     sql: sql,
-                    enters: enters,
+                    lines: lines,
                 };
             },
         },

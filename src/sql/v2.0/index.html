@@ -140,7 +140,7 @@
         let enter_px = 25; // 即1个换行符代表几个px像素
         let sql_format = sql_review_obj.SQLCompilerAPI.format();
         sql_input_obj.val(sql_format.sql);
-        sql_input_obj.css("height", enter_px * sql_format.enters); // SQL输入域自适应高度
+        sql_input_obj.css("height", enter_px * sql_format.lines); // SQL输入域自适应高度
     }
 
     $(document).on("click", "#Go", function () {
