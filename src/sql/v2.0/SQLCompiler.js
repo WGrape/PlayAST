@@ -1,7 +1,7 @@
 /**
  * TODO:
  * 1. null 还没解决，SELECT * FROM test left join C WHERE id = 10 ORDER BY id DESC;
- *
+ * 2. 注意: 判断多写时不能过滤, 判断少写时需要过滤
  */
 (function () {
 
@@ -32,7 +32,7 @@
                 sentence: ["select", "update", "insert", "delete"],
                 clause: ["union", "set", "values", "from", "where", "left", "inner", "right", "join", "group", "having", "order", "limit"],
 
-                other: ["into", "between", "and", "as", "like", "not", "desc", "asc", "on", "is", "or", "all", "by"],
+                other: ["into", "between", "and", "as", "like", "not", "desc", "asc", "on", "is", "or", "all", "by", "null"],
                 function: ["count", "max", "min", "sum", "avg", "distinct"],
                 any: [],
             },
@@ -218,7 +218,7 @@
         // 语句类型: select, update, delete, insert
         judgeSQLType(sql) {
 
-            let types = ["select", "update", "delete", "insert"];
+            let types = ["select", "update", "delete"]; // 暂时不支持insert语句
             for (let type of types) {
 
                 if (sql.indexOf(type) > -1) {
@@ -227,7 +227,7 @@
                 }
             }
 
-            this.error({"msg": "Illegal Statement", "trace": sql});
+            this.error({"msg": "Illegal Statement, only access select, update and delete", "trace": sql});
         }
     };
 
@@ -597,16 +597,89 @@
                                 parser.parsing.parsingExpr.parsingExpressionOfHaving(expression);
                             }
                         }
-
                     }
                 },
 
                 parsingSentenceOfUpdate() {
 
+                    let sentence_nodes = parser.props.ast.next;
+
+                    let clause_nodes = sentence_nodes[0].next;
+
+                    for (let j = 0; j <= clause_nodes.length - 1; ++j) {
+
+                        let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
+
+                        if (0 === j) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfUpdate(expression);
+                        } else if ("set" === clause_nodes[j].value) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfSet(expression);
+                        } else if (["left join", "right join", "inner join"].indexOf(clause_nodes[j].value) > -1) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfJoin(expression);
+                        } else if ("where" === clause_nodes[j].value) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfWhere(expression);
+                        } else if ("group" === clause_nodes[j].value) {
+
+                            if (expression.indexOf("by") === 0) {
+                                expression = expression.slice(2).trim(); // 去掉by
+                            }
+                            parser.parsing.parsingExpr.parsingExpressionOfGroup(expression);
+                        } else if ("order" === clause_nodes[j].value) {
+
+                            if (expression.indexOf("by") === 0) {
+                                expression = expression.slice(2).trim(); // 去掉by
+                            }
+                            parser.parsing.parsingExpr.parsingExpressionOfOrder(expression);
+                        } else if ("limit" === clause_nodes[j].value) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfLimit(expression);
+                        }
+                    }
                 },
 
                 parsingSentenceOfDelete() {
 
+                    let sentence_nodes = parser.props.ast.next;
+
+                    let clause_nodes = sentence_nodes[0].next;
+
+                    for (let j = 0; j <= clause_nodes.length - 1; ++j) {
+
+                        let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
+
+                        if (0 === j) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfDelete(expression);
+                        } else if ("from" === clause_nodes[j].value) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfFrom(expression);
+                        } else if (["left join", "right join", "inner join"].indexOf(clause_nodes[j].value) > -1) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfJoin(expression);
+                        } else if ("where" === clause_nodes[j].value) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfWhere(expression);
+                        } else if ("group" === clause_nodes[j].value) {
+
+                            if (expression.indexOf("by") === 0) {
+                                expression = expression.slice(2).trim(); // 去掉by
+                            }
+                            parser.parsing.parsingExpr.parsingExpressionOfGroup(expression);
+                        } else if ("order" === clause_nodes[j].value) {
+
+                            if (expression.indexOf("by") === 0) {
+                                expression = expression.slice(2).trim(); // 去掉by
+                            }
+                            parser.parsing.parsingExpr.parsingExpressionOfOrder(expression);
+                        } else if ("limit" === clause_nodes[j].value) {
+
+                            parser.parsing.parsingExpr.parsingExpressionOfLimit(expression);
+                        }
+                    }
                 },
 
                 parsingSentenceOfInsert() {
@@ -621,10 +694,17 @@
                 common: {
 
                     // 解析数字
-                    parsingNumber(expression) {
+                    parsingNumber(expression, throw_error = false) {
 
                         expression = expression.trim();
-                        return (new RegExp(/^[0-9]+$/)).test(expression);
+                        let res = (new RegExp(/^[0-9]+$/)).test(expression);
+
+                        if (!res && throw_error) {
+
+                            tool.error({"msg": "Not number", "trace": expression})
+                        }
+
+                        return res;
                     },
 
                     // 解析字符串
@@ -790,8 +870,7 @@
 
                         formula = formula.trim();
 
-                        let step = 0, items = formula.split("=");
-
+                        let step, items = formula.split("=");
                         for (step = 0; step <= items.length - 1; ++step) {
 
                             // 解析赋值表达式的左侧
@@ -842,6 +921,20 @@
                     }
                 },
 
+                // 解析 update 字段列表表达式
+                parsingExpressionOfUpdate(expression) {
+
+                    this.common.parsingColumnOfDot(expression, -1, 0, 2);
+                },
+
+                // 解析 delete 字段列表表达式
+                parsingExpressionOfDelete(expression) {
+
+                    if ("" !== expression) {
+                        tool.error({"msg": "Incorrect Delete", "trace": expression});
+                    }
+                },
+
                 // 解析 from 表达式
                 parsingExpressionOfFrom(expression) {
 
@@ -851,10 +944,25 @@
                 // 解析 order 表达式
                 parsingExpressionOfOrder(expression) {
 
-                    let columns = expression.split(/asc|desc/).join("").split(",");
-                    for (let column of columns) {
+                    expression = expression.trim();
 
-                        this.common.parsingColumnOfDot(column);
+                    let order_rules = expression.split(",");
+
+                    for (let order_rule of order_rules) {
+
+                        order_rule = order_rule.trim();
+
+                        let order_rule_length = order_rule.split(" ").length;
+                        if (1 === order_rule_length) {
+
+                            this.common.parsingColumnOfDot(order_rule);
+                        } else if (2 === order_rule_length && ["asc", "desc"].indexOf(order_rule.split(" ")[1]) < 0) {
+
+                            tool.error({"msg": "Incorrect Order, only access asc or desc", "trace": expression});
+                        } else if (2 !== order_rule_length) {
+
+                            tool.error({"msg": "Incorrect Order Expression", "trace": expression});
+                        }
                     }
                 },
 
@@ -924,9 +1032,16 @@
                 parsingExpressionOfLimit(expression) {
 
                     let numbers = expression.split(",");
+
+                    // 注意: 判断多写时不能过滤, 判断少写时需要过滤 (直接用trim前和trim后的数组长度比对是更好的方法)
+                    if (numbers.length !== tool.trimStringArray(numbers).length || numbers.length > 2) {
+
+                        tool.error({"msg": "Incorrect Limit Expression", "trace": expression});
+                    }
+
                     for (let number of numbers) {
 
-                        this.common.parsingNumber(number);
+                        this.common.parsingNumber(number, true);
                     }
                 },
 
