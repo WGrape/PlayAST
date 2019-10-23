@@ -618,6 +618,34 @@
                         }
                     },
 
+                    // 解析值
+                    parsingValueOfCompare() {
+
+                        // 可能是数字
+
+                        // 可能是字符串
+
+                        // 可能是子查询
+                    },
+
+                    // 解析值
+                    parsingValueOfAssign(value) {
+
+                        // 可能是数字
+                        if (this.parsingNumber(value)) {
+
+                            return true;
+                        }
+
+                        // 可能是字符串
+                        if (this.parsingString(value)) {
+                            return true;
+                        }
+
+                        // 其他类型
+                        return false;
+                    },
+
                     // 解析函数参数
                     parsingFunctionParam(expression) {
 
@@ -650,6 +678,7 @@
                         }
                     },
 
+                    // 解析别名
                     parsingAlias(expression, separator = "as") {
 
                         let columns = expression.split(separator);
@@ -664,6 +693,7 @@
                         }
                     },
 
+                    // 解析列
                     parsingColumn(str) {
 
                         tool.regTest(/^[`]?[a-zA-Z0-9-_]+[`]?$/, str, {
@@ -712,12 +742,47 @@
                         }
                     },
 
-                    // 解析assign值, set, where
-                    parsingCompareItem() {
+                    // 解析 assign 算式, 如set
+                    parsingAssignFormula(formula) {
 
+                        let step = 0, items = formula.split(/=|,/);
 
+                        for (step = 0; step <= items.length - 1; ++steps) {
+
+                            // 解析赋值表达式的左侧
+                            if (0 === step % 2) {
+                                this.parsingColumnOfDot();
+                            }
+
+                            // 解析赋值表达式的右侧
+                            else {
+
+                                if (!this.parsingValueOfAssign(items[step])) {
+                                    tool.error({"msg": "Incorrect Assign", "trace": formula});
+                                }
+                            }
+                        }
                     },
 
+                    // 解析 compare 算式, 如 where
+                    parsingCompareFormula(formula) {
+
+                        let step = 0, items = formula.split(/=|!=|>|<|>=|<=/);
+
+                        for (step = 0; step <= items.length - 1; ++steps) {
+                            // 解析表达式左侧, 偶数为左侧, 奇数为右侧
+                            if (0 === step % 2) {
+
+                                this.parsingColumnOfDot(items[step], -1);
+                            }
+
+                            // 解析表达式右侧
+                            else {
+
+                                // 右式子可能是子查询
+                            }
+                        }
+                    },
                 },
 
                 // 解析 select 字段列表表达式
@@ -749,22 +814,53 @@
                 // 解析 where 表达式
                 parsingExpressionOfJoin(expression) {
 
+                    // 解析表
+                    let table = expression.split("on")[0];
+                    this.common.parsingColumnOfDot(table, -1, 0, 2);
+
+                    let remain = expression.split("on")[1];
+
 
                 },
 
                 // 解析 where 表达式
                 parsingExpressionOfWhere(expression) {
 
+                    let formulas = expression.split(/and|or|/);
+                    for (let formula of formulas) {
+
+                        this.common.parsingCompareFormula(formula);
+                    }
                 },
 
                 // 解析 set 表达式
                 parsingExpressionOfSet(expression) {
 
+                    let formulas = expression.split(/,/);
+                    for (let formula of formulas) {
+
+                        this.common.parsingAssignFormula(formula);
+                    }
+                },
+
+                // 解析 insert 表达式
+                parsingExpressionOfInsert(expression) {
+
+                    let columns = expression.split(/\(|\)|,/);
+                    for (let column of columns) {
+
+                        this.common.parsingColumnOfDot(column, -1);
+                    }
                 },
 
                 // 解析 values 表达式
                 parsingExpressionOfValues(expression) {
 
+                    let values = expression.split(/\(|\)|,/);
+                    for (let value of values) {
+
+                        this.common.parsingValueOfAssign(value);
+                    }
                 },
 
                 // 解析 group 表达式
