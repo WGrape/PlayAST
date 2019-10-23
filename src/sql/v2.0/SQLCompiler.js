@@ -1,3 +1,8 @@
+/**
+ * TODO:
+ * 1. null 还没解决，SELECT * FROM test left join C WHERE id = 10 ORDER BY id DESC;
+ *
+ */
 (function () {
 
     const FSM = {
@@ -144,7 +149,55 @@
         isUndefined(obj) {
 
             return "undefined" === typeof obj;
-        }
+        },
+
+        implodeArrByField(arr, field) {
+
+            let str = "";
+            for (let item of arr) {
+
+                if (!this.isUndefined(item[field])) {
+                    str += item[field];
+                }
+            }
+
+            return str;
+        },
+
+        // 从start处开始, 寻找下一个 ch 的
+        findNextCh(str, start, ch) {
+
+            let length = str.length;
+            for (let i = start; i <= length - 1; ++i) {
+
+                if (ch === str[i]) {
+
+                    return i;
+                }
+            }
+
+            return -1;
+        },
+
+        // 正则匹配
+        regTest(pattern, str, error) {
+
+            let reg = new RegExp(pattern);
+            if (!reg.test(str)) {
+
+                tool.error(error);
+            }
+        },
+
+        // 表达式中是否含有函数
+        isExistFunctionInExpression(expression) {
+
+            let reg = new RegExp(/^[a-zA-Z0-9-_]+\(.*\)$/);
+            return reg.test(expression);
+        },
+
+        trimStringArray(arr) {
+        },
     };
 
     // 词法分析器
@@ -422,26 +475,217 @@
 
         parsing: {
 
+            running() {
+
+                this.parsingSentence.go();
+            },
+
+            // 解析句子
+            parsingSentence: {
+
+                go() {
+
+                    this.parsingSentenceOfSelect();
+                    this.parsingSentenceOfUpdate();
+                    this.parsingSentenceOfDelete();
+                    this.parsingSentenceOfInsert();
+                },
+
+                parsingSentenceOfSelect() {
+
+                    let sentence_nodes = parser.props.ast.next;
+
+                    for (let i = 0; i <= sentence_nodes.length - 1; ++i) {
+
+                        if (i > 0) {
+
+                            // 子查询的情况
+
+                            // 联合查询的情况
+                        }
+                    }
+                },
+
+                parsingSentenceOfUpdate() {
+
+                },
+
+                parsingSentenceOfDelete() {
+
+                },
+
+                parsingSentenceOfInsert() {
+
+                },
+            },
+
+            // 解析表达式, 用正则
             parsingExpr: {
 
-                parsingExprForSelect() {
+                // 共有的解析规则
+                common: {
 
+                    // 解析数字
+                    parsingNumber(expression) {
+
+                        return (new RegExp(/^[0-9]+$/)).test(expression);
+                    },
+
+                    // 解析字符串
+                    parsingString(expression) {
+
+                        try {
+
+                            return "string" === typeof expression;
+                        } catch (e) {
+                            tool.error({"msg": "Incorrect expression", "trace": expression});
+                        }
+                    },
+
+                    // 解析函数参数
+                    parsingFunctionParam(expression) {
+
+                        // 数字
+                        if (this.parsingNumber(expression)) {
+                            return true;
+                        }
+
+                        // 字符串
+                        if (this.parsingString(expression)) {
+                            return true;
+                        }
+
+                        // column
+                        this.parsingColumnOfDot(expression, -1);
+                    },
+
+                    // 解析函数
+                    parsingFunction(expression) {
+
+                        let start = tool.findNextCh(expression, 0, "(") + 1;
+                        let end = tool.findNextCh(expression, 0, ")");
+                        let params_str = expression.slice(start, end);
+
+                        // 解析参数列表
+                        let params = params_str.split(",");
+                        for (let param of params) {
+
+                            this.parsingFunctionParam(param);
+                        }
+                    },
+
+                    parsingAlias(expression, separator = "as") {
+
+                        let columns = expression.split(separator);
+                        if (columns.length !== 2) {
+
+                            tool.error({"msg": "Incorrect Alias Expression", "trace": expression});
+                        }
+                        for (let column of columns) {
+
+                            column = column.trim();
+                            this.parsingColumn(column);
+                        }
+                    },
+
+                    parsingColumn(str) {
+
+                        tool.regTest(/^[`]?[a-zA-Z0-9-_]+[`]?$/, str, {
+                            "msg": "incorrect column",
+                            "trace": str,
+                        });
+                    },
+
+                    // 递归解析列
+                    parsingColumnOfDot(expression, dot_index, level = 0, max_level = 3) {
+
+                        // 找到从 dot_index 到下一个 dot_index之间的字符串
+                        let start = dot_index + 1;
+                        let next_dot_index = tool.findNextCh(expression, start, '.');
+                        let str = (next_dot_index < 0) ? expression.slice(start) : expression.slice(start, next_dot_index); // 输入非法时, str为空, 不会被正则匹配成功
+
+                        // 后面已经没有 dot 字符了
+                        if (next_dot_index < 0) {
+
+                            // 如果是函数, 则解析函数
+                            if (0 === level && tool.isExistFunctionInExpression(str)) {
+
+                                // 递归深度为0时, 才能有函数, 即 : db.table.column.func()非法, func()合法
+                                this.parsingFunction(str);
+                            }
+
+                            // 如果有别名, 则解析别名( 如果有 as, 或者有空格 )
+                            else if (str.indexOf("as") > -1 || str.indexOf(" ") > -1) {
+
+                                this.parsingAlias(str);
+                            }
+                        }
+
+                        // 解析普通字段
+                        this.parsingColumn(expression);
+
+                        // 后面还有 dot 字符, 还需要继续解析
+                        if (next_dot_index >= 0) {
+
+                            if (level >= max_level) {
+
+                                tool.error({"msg": "error:max level dot parsing limit", "trace": expression});
+                            }
+
+                            this.parsingColumnOfDot(expression, next_dot_index, level + 1);
+                        }
+                    },
+
+                    // 解析assign值, set, where
+                    parsingCompareItem() {
+
+
+                    },
 
                 },
 
-                parsingExprForUpdate() {
+                // 解析 select 字段列表表达式
+                parsingExpressionOfSelect(expression) {
 
                 },
 
-                parsingExprForInsert() {
+                // 解析 from 表达式
+                parsingExpressionOfFrom(expression) {
+
+                    this.common.parsingColumnOfDot(expression, -1, 0, 2);
+                },
+
+                // 解析 order 表达式
+                parsingExpressionOfOrder(expression) {
 
                 },
 
-                parsingExprForDelete() {
+                // 解析 where 表达式
+                parsingExpressionOfWhere(expression) {
 
                 },
 
-                parsingClauseOrder() {
+                // 解析 set 表达式
+                parsingExpressionOfSet(expression) {
+
+                },
+
+                // 解析 values 表达式
+                parsingExpressionOfValues(expression) {
+
+                },
+
+                // 解析 group 表达式
+                parsingExpressionOfGroup(expression) {
+
+                },
+
+                // 解析 Limit 表达式
+                parsingExpressionOfLimit(expression) {
+
+                },
+
+                parsingExpressionOfHaving(expression) {
 
                 },
             }
@@ -455,6 +699,7 @@
 
         start() {
 
+            // 状态机模型分析tokens
             for (let token of this.props.tokens) {
 
                 // token先流向词状态, 由词状态内部去抉择下一个状态是什么, 并返回创建的这个词节点
@@ -478,6 +723,9 @@
                     }
                 }
             }
+
+            // 开始解析
+            this.parsing.running();
         },
 
         // 生成AST节点
@@ -528,7 +776,7 @@
             // 节点合并
             combineNodes() {
 
-                // group by, order by, left/right/inner join
+                // left/right/inner join (group by, order by不需要)
                 for (let i = 0; i <= parser.props.ast.next.length - 1; ++i) {
 
                     let sentence_node = parser.props.ast.next[i];
@@ -574,6 +822,9 @@
                     }
                 }
             },
+
+            // 解析子查询
+
         }
     };
 
@@ -631,8 +882,9 @@
             WORD_TABLE.sequence.keyword.any = (() => {
 
                 return WORD_TABLE.sequence.keyword.sentence.concat(
-                    WORD_TABLE.terminator.punctuator.clause,
-                    WORD_TABLE.terminator.punctuator.other,
+                    WORD_TABLE.sequence.keyword.clause,
+                    WORD_TABLE.sequence.keyword.other,
+                    WORD_TABLE.sequence.keyword.function
                 );
             })();
             WORD_TABLE.terminator.punctuator.any = (() => {
@@ -719,7 +971,7 @@
 
                                     indents = 0;
                                     enter_str = tool.makeContinuousStr(enters === 0 ? 0 : 1, "\n");
-                                    sql += (enter_str + obj['value']);
+                                    sql += (enter_str + obj['value'].toUpperCase());
                                     ++enters;
                                 } else if ("clause" === obj[property] && !tool.isUndefined(obj['value'])) {
 
@@ -727,11 +979,15 @@
                                     indents = 4;
                                     indent_str = tool.makeContinuousStr(indents, " ");
                                     enter_str = tool.makeContinuousStr(1, "\n");
-                                    sql += (enter_str + indent_str + obj['value']);
+                                    sql += (enter_str + indent_str + obj['value'].toUpperCase());
                                     ++enters;
                                 } else if (("expr" === obj[property] || "word" === obj[property]) && !tool.isUndefined(obj['value'])) {
 
-                                    sql += obj['value'];
+                                    let val = obj['value'];
+                                    if (scanner.props.wordTable.sequence.keyword.any.indexOf(val) > -1) {
+                                        val = val.toUpperCase();
+                                    }
+                                    sql += val;
                                 }
                             }
                         }
