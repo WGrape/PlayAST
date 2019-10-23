@@ -2,6 +2,7 @@
  * TODO:
  * 1. null 还没解决，SELECT * FROM test left join C WHERE id = 10 ORDER BY id DESC;
  * 2. 注意: 判断多写时不能过滤, 判断少写时需要过滤
+ * 3. 子查询的括号格式化
  */
 (function () {
 
@@ -222,6 +223,16 @@
             for (let type of types) {
 
                 if (sql.indexOf(type) > -1) {
+
+                    if (("select" === type || "delete" === type) && sql.indexOf("from") < 0) {
+
+                        this.error({"msg": "Except 'from' Clause of Statement", "trace": sql});
+                    }
+
+                    if (("update" === type) && sql.indexOf("set") < 0) {
+
+                        this.error({"msg": "Except 'set' Clause of Statement", "trace": sql});
+                    }
 
                     return type;
                 }
@@ -807,10 +818,21 @@
 
                         str = str.trim();
 
-                        tool.regTest(/^[`]?[a-zA-Z0-9-_*]+[`]?$/, str, {
-                            "msg": "incorrect column",
-                            "trace": str,
-                        });
+                        if ("(" === str[str.length - 1]) {
+
+                            // 子查询
+                            parser.parsing.parsingExpr.parsingExpressionOfSubQuery(str);
+                        } else if (")" === str[str.length - 1]) {
+
+                            // 子查询的后括号
+                            return true;
+                        } else {
+
+                            tool.regTest(/^[`]?[a-zA-Z0-9-_*]+[`]?$/, str, {
+                                "msg": "incorrect column",
+                                "trace": str,
+                            });
+                        }
                     },
 
                     // 递归解析列
@@ -1360,6 +1382,9 @@
 
                                     // clause_indents += 4;
                                     clause_indents = sentence_indents + 4; // 从句缩进
+                                    if ("union" === obj['value']) {
+                                        clause_indents = 0;
+                                    }
 
                                     indent_str = tool.makeContinuousStr(clause_indents, " ");
                                     enter_str = tool.makeContinuousStr(1, "\n");

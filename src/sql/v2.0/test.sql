@@ -28,4 +28,16 @@ DELETE FROM table_name
 WHERE some_column=some_value;
 
 
+SELECT * FROM articles WHERE category_id = 123 ORDER BY id LIMIT 50, 10 UNION SELECT * FROM ( select * from A )
+
+SELECT * FROM articles WHERE category_id = 123 ORDER BY id LIMIT 50, 10 UNION SELECT * FROM ( select * from A )
+
+
+
+SELECT * fds;
+
+update test;
+
+
+
 
