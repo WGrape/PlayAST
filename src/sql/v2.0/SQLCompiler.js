@@ -156,6 +156,10 @@
             let str = "";
             for (let item of arr) {
 
+                if ("value" === field && ";" === item['value']) {
+                    continue;
+                }
+
                 if (!this.isUndefined(item[field])) {
                     str += item[field];
                 }
@@ -197,6 +201,18 @@
         },
 
         trimStringArray(arr) {
+
+            // ["", "id", ""]
+            let new_arr = [];
+
+            for (let item of arr) {
+
+                if (item.trim().length > 0) {
+                    new_arr.push(item);
+                }
+            }
+
+            return new_arr;
         },
 
         // 语句类型: select, update, delete, insert
@@ -535,11 +551,11 @@
                     for (let i = 0; i <= sentence_nodes.length - 1; ++i) {
 
                         let clause_nodes = sentence_nodes[i].next;
-                        for (let j = 0; j <= clause_nodes.length; ++j) {
+                        for (let j = 0; j <= clause_nodes.length - 1; ++j) {
 
-                            let expression = tool.implodeArrByField(clause_nodes[j].next);
+                            let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
 
-                            if ("select" === clause_nodes[j].value) {
+                            if (0 === j) {
 
                                 parser.parsing.parsingExpr.parsingExpressionOfSelect(expression);
                             } else if ("from" === clause_nodes[j].value) {
@@ -558,6 +574,9 @@
                             } else if (["left join", "right join", "inner join"].indexOf(clause_nodes[j].value) > -1) {
 
                                 parser.parsing.parsingExpr.parsingExpressionOfJoin(expression);
+                            } else if ("where" === clause_nodes[j].value) {
+
+                                parser.parsing.parsingExpr.parsingExpressionOfWhere(expression);
                             } else if ("group" === clause_nodes[j].value) {
 
                                 if (expression.indexOf("by") === 0) {
@@ -604,12 +623,14 @@
                     // 解析数字
                     parsingNumber(expression) {
 
+                        expression = expression.trim();
                         return (new RegExp(/^[0-9]+$/)).test(expression);
                     },
 
                     // 解析字符串
                     parsingString(expression) {
 
+                        expression = expression.trim();
                         try {
 
                             return "string" === typeof expression;
@@ -619,17 +640,19 @@
                     },
 
                     // 解析值
-                    parsingValueOfCompare() {
+                    parsingValueOfCompare(value) {
 
-                        // 可能是数字
+                        value = value.trim();
 
-                        // 可能是字符串
+                        this.parsingValueOfAssign(value);
 
                         // 可能是子查询
                     },
 
                     // 解析值
                     parsingValueOfAssign(value) {
+
+                        value = value.trim();
 
                         // 可能是数字
                         if (this.parsingNumber(value)) {
@@ -649,6 +672,8 @@
                     // 解析函数参数
                     parsingFunctionParam(expression) {
 
+                        expression = expression.trim();
+
                         // 数字
                         if (this.parsingNumber(expression)) {
                             return true;
@@ -660,11 +685,13 @@
                         }
 
                         // column
-                        this.parsingColumnOfDot(expression, -1);
+                        this.parsingColumnOfDot(expression);
                     },
 
                     // 解析函数
                     parsingFunction(expression) {
+
+                        expression = expression.trim();
 
                         let start = tool.findNextCh(expression, 0, "(") + 1;
                         let end = tool.findNextCh(expression, 0, ")");
@@ -681,6 +708,8 @@
                     // 解析别名
                     parsingAlias(expression, separator = "as") {
 
+                        expression = expression.trim();
+
                         let columns = expression.split(separator);
                         if (columns.length !== 2) {
 
@@ -689,69 +718,85 @@
                         for (let column of columns) {
 
                             column = column.trim();
-                            this.parsingColumn(column);
+                            this.parsingColumnOfDot(column);
                         }
                     },
 
                     // 解析列
                     parsingColumn(str) {
 
-                        tool.regTest(/^[`]?[a-zA-Z0-9-_]+[`]?$/, str, {
+                        str = str.trim();
+
+                        tool.regTest(/^[`]?[a-zA-Z0-9-_*]+[`]?$/, str, {
                             "msg": "incorrect column",
                             "trace": str,
                         });
                     },
 
                     // 递归解析列
-                    parsingColumnOfDot(expression, dot_index, level = 0, max_level = 3) {
+                    parsingColumnOfDot(expression, dot_index = -1, level = 0, max_level = 3) {
 
-                        // 找到从 dot_index 到下一个 dot_index之间的字符串
-                        let start = dot_index + 1;
-                        let next_dot_index = tool.findNextCh(expression, start, '.');
-                        let str = (next_dot_index < 0) ? expression.slice(start) : expression.slice(start, next_dot_index); // 输入非法时, str为空, 不会被正则匹配成功
+                        expression = expression.trim();
 
-                        // 后面已经没有 dot 字符了
-                        if (next_dot_index < 0) {
+                        // 如果有别名, 则解析别名( 如果有 as, 或者有空格 )
+                        for (let alias_sign of ["as", " "]) {
 
-                            // 如果是函数, 则解析函数
-                            if (0 === level && tool.isExistFunctionInExpression(str)) {
+                            let columns = tool.trimStringArray(expression.split(alias_sign)).length;
+                            if (2 === columns) {
 
-                                // 递归深度为0时, 才能有函数, 即 : db.table.column.func()非法, func()合法
-                                this.parsingFunction(str);
+                                // "a as".split("as") = ["a ", ""], 故这种错误(未写别名)也会捕捉到
+                                this.parsingAlias(expression, alias_sign);
+                                return;
                             }
 
-                            // 如果有别名, 则解析别名( 如果有 as, 或者有空格 )
-                            else if (str.indexOf("as") > -1 || str.indexOf(" ") > -1) {
+                            // 写了多个别名, 错误也会被捕捉到
+                            if (2 < columns) {
 
-                                this.parsingAlias(str);
+                                tool.error({"msg": "Incorrect Columns", "trace": expression});
+                                return;
                             }
                         }
 
-                        // 解析普通字段
-                        this.parsingColumn(expression);
+                        // 如果是函数, 则解析函数
+                        if (0 === level && tool.isExistFunctionInExpression(expression)) {
 
-                        // 后面还有 dot 字符, 还需要继续解析
-                        if (next_dot_index >= 0) {
+                            // 递归深度为0时, 才能有函数, 即 : db.table.column.func()非法, func()合法
+                            this.parsingFunction(expression);
+                        } else {
 
-                            if (level >= max_level) {
+                            // 找到从 dot_index 到下一个 dot_index之间的字符串
+                            let start = dot_index + 1;
+                            let next_dot_index = tool.findNextCh(expression, start, '.');
+                            let str = (next_dot_index < 0) ? expression.slice(start) : expression.slice(start, next_dot_index); // 输入非法时, str为空, 不会被正则匹配成功
 
-                                tool.error({"msg": "error:max level dot parsing limit", "trace": expression});
+                            // 解析普通字段
+                            this.parsingColumn(str);
+
+                            // 后面还有 dot 字符, 还需要继续解析
+                            if (next_dot_index >= 0) {
+
+                                if (level >= max_level - 1) {
+
+                                    tool.error({"msg": "error:max level dot parsing limit", "trace": expression});
+                                }
+
+                                this.parsingColumnOfDot(expression, next_dot_index, level + 1);
                             }
-
-                            this.parsingColumnOfDot(expression, next_dot_index, level + 1);
                         }
                     },
 
                     // 解析 assign 算式, 如set
                     parsingAssignFormula(formula) {
 
-                        let step = 0, items = formula.split(/=|,/);
+                        formula = formula.trim();
 
-                        for (step = 0; step <= items.length - 1; ++steps) {
+                        let step = 0, items = formula.split("=");
+
+                        for (step = 0; step <= items.length - 1; ++step) {
 
                             // 解析赋值表达式的左侧
                             if (0 === step % 2) {
-                                this.parsingColumnOfDot();
+                                this.parsingColumnOfDot(items[step]);
                             }
 
                             // 解析赋值表达式的右侧
@@ -767,19 +812,21 @@
                     // 解析 compare 算式, 如 where
                     parsingCompareFormula(formula) {
 
+                        formula = formula.trim();
+
                         let step = 0, items = formula.split(/=|!=|>|<|>=|<=/);
 
-                        for (step = 0; step <= items.length - 1; ++steps) {
+                        for (step = 0; step <= items.length - 1; ++step) {
                             // 解析表达式左侧, 偶数为左侧, 奇数为右侧
                             if (0 === step % 2) {
 
-                                this.parsingColumnOfDot(items[step], -1);
+                                this.parsingColumnOfDot(items[step]);
                             }
 
                             // 解析表达式右侧
                             else {
 
-                                // 右式子可能是子查询
+                                this.parsingValueOfCompare(items[step]);
                             }
                         }
                     },
@@ -791,7 +838,7 @@
                     let columns = expression.split(",");
                     for (let column of columns) {
 
-                        this.common.parsingColumnOfDot(column, -1);
+                        this.common.parsingColumnOfDot(column);
                     }
                 },
 
@@ -807,7 +854,7 @@
                     let columns = expression.split(/asc|desc/).join("").split(",");
                     for (let column of columns) {
 
-                        this.common.parsingColumnOfDot(column, -1);
+                        this.common.parsingColumnOfDot(column);
                     }
                 },
 
@@ -826,7 +873,7 @@
                 // 解析 where 表达式
                 parsingExpressionOfWhere(expression) {
 
-                    let formulas = expression.split(/and|or|/);
+                    let formulas = expression.split(/and|or/);
                     for (let formula of formulas) {
 
                         this.common.parsingCompareFormula(formula);
@@ -849,7 +896,7 @@
                     let columns = expression.split(/\(|\)|,/);
                     for (let column of columns) {
 
-                        this.common.parsingColumnOfDot(column, -1);
+                        this.common.parsingColumnOfDot(column);
                     }
                 },
 
@@ -869,7 +916,7 @@
                     let columns = expression.split(",");
                     for (let column of columns) {
 
-                        this.common.parsingColumnOfDot(column, -1);
+                        this.common.parsingColumnOfDot(column);
                     }
                 },
 
@@ -940,7 +987,7 @@
             }
 
             // 开始解析
-            //this.parsing.running();
+            this.parsing.running();
         },
 
         // 生成AST节点
