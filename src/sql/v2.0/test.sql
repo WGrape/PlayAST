@@ -70,6 +70,56 @@ SELECT *
 
 SELECT * FROM articles WHERE id>=(SELECT ( id FROM articles WHERE category_id = 123 ORDER BY id LIMIT 10000, 1) LIMIT 10 UNION ALL SELECT * FROM test ;
 
+SELECT * , COUNT(*), discount(*) FROM a INNER JOIN b ON a.id = b.id AND c.id = d.id where id = ( select count(*) from test )
+
+SELECT * , COUNT(*), discount(*) FROM a INNER JOIN b ON a.id = b.id AND c.id = d.id WHERE id = ( SELECT COUNT(*) FROM test WHERE id BETWEEN 10 AND 20 );
 
 
+SELECT *
+    FROM test
+    GROUP BY id
+    HAVING COUNT(*) > 10;
+
+SELECT * FROM ( SELECT * FROM ( SELECT * FROM ( SELECT * FROM ( SELECT * FROM ( SELECT * FROM test ) ) ) ) );
+
+
+
+
+SELECT *
+    FROM (
+        SELECT *
+            FROM (
+                SELECT *
+                    FROM (
+                        SELECT *
+                            FROM (
+                                SELECT *
+                                    FROM (
+                                        SELECT *
+                                            FROM test
+                    )
+                )
+            )
+        )
+    );
+
+
+
+SELECT *
+    FROM (
+        SELECT *
+            FROM (
+                SELECT *
+                    FROM (
+                        SELECT *
+                            FROM (
+                                SELECT *
+                                    FROM (
+                                        SELECT *
+                                            FROM test
+                                    )
+                            )
+                    )
+            )
+    );
 

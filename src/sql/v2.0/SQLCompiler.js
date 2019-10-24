@@ -57,7 +57,7 @@
     };
 
     let globalVariableContainer = {
-        config: {},
+        config: {}, // 所有的配置都写这里, 不要写在 tool 里面
     };
     let tool = {
 
@@ -65,6 +65,25 @@
 
             // e.trace = e.trace.replace(/\n/g, " ");
             throw e.msg + "\n\n" + e.trace + "\n\n" + e.seq;
+        },
+
+        debug(msg, data = false) {
+
+            if (!globalVariableContainer.config.debug) {
+                return;
+            }
+
+            if (1 !== globalVariableContainer.config.log_n) {
+                console.log("\n\n");
+            }
+
+            console.warn(globalVariableContainer.config.log_n + ": " + msg);
+
+            if (false !== data) {
+                console.log(data);
+            }
+
+            globalVariableContainer.config.log_n++;
         },
 
         truncateStr(str, end) {
@@ -262,6 +281,7 @@
 
         init(stream) {
 
+            tool.debug("SQLCompiler Steps lexicalAnalysis: stream assign to scanner.props.stream");
             this.props.stream = stream;
 
             this.before();
@@ -270,6 +290,8 @@
         },
 
         start() {
+
+            tool.debug("SQLCompiler Steps lexicalAnalysis: start");
 
             let sequence = "";
             while (!tool.isUndefined(sequence = this.gets())) {
@@ -280,6 +302,8 @@
                     this.fsm.events.flowtoWordState(sequence);
                 }
             }
+
+            tool.debug("SQLCompiler Steps lexicalAnalysis: start ending");
         },
 
         // 从输入区读取字符序列，读到终止符为止
@@ -338,7 +362,13 @@
             this.props.tokens = [];
             this.props.seq = 0;
 
+            // 判断sql类型
             this.props.sql_type = tool.judgeSQLType(this.props.stream);
+
+            tool.debug("SQLCompiler Steps lexicalAnalysis: pre-processing", {
+                stream: this.props.stream,
+                "sql_type": this.props.sql_type
+            });
         },
 
         // 后置处理
@@ -360,6 +390,10 @@
                 this.props.tokens[start].match_index = end;
                 this.props.tokens[end].match_index = start;
             }
+
+            tool.debug("SQLCompiler Steps lexicalAnalysis: after ending", {
+                tokens: this.props.tokens
+            });
         },
 
         fsm: {
@@ -526,6 +560,7 @@
 
             running() {
 
+                tool.debug("SQLCompiler Steps syntacticAnalysis: parsing");
                 this.parsingSentence.go();
             },
 
@@ -565,11 +600,27 @@
                     // 循环每一个语句
                     for (let i = 0; i <= sentence_nodes.length - 1; ++i) {
 
+                        tool.debug("SQLCompiler Steps syntacticAnalysis: parsing select statement", {
+                            "sentence_node": sentence_nodes[i],
+                            "clause_nodes": sentence_nodes[i].next,
+                        });
+
                         let clause_nodes = sentence_nodes[i].next;
                         for (let j = 0; j <= clause_nodes.length - 1; ++j) {
 
                             // 对表达式进行预处理
                             let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
+
+                            tool.debug("SQLCompiler Steps syntacticAnalysis: parsing clause ...", {
+                                "expression": expression,
+                                "clause_node_next_nodes": clause_nodes[j].next[clause_nodes[j].next_index].next,
+                                "clause_node": clause_nodes[j].value,
+                                "clause": clause_nodes[j].value,
+                            });
+
+
+                            // expression 的解析不应受到这些字符的影响
+                            expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
                             expression = expression.replace(/[()]/g, "").trim(); // 去掉括号
                             if (expression.indexOf("by") === 0) {
                                 expression = expression.slice(2).trim(); // 去掉by
@@ -815,6 +866,25 @@
                         }
                     },
 
+                    // 解析 between 语法
+                    parsingBetween(expression) {
+
+                        let items = expression.split(/\s+between\s+|\s+and\s+/);
+
+                        // 有 between, 但是 between and 表达式不符合
+                        if (3 !== items.length) {
+
+                            tool.error({"msg": "Incorrect Between Expression", "trace": expression});
+                        }
+
+                        // 解析column
+                        this.parsingColumnOfDot(items[0]);
+
+                        // 解析Number
+                        this.parsingNumber(items[1], true);
+                        this.parsingNumber(items[2], true);
+                    },
+
                     // 解析列
                     parsingPlainColumn(str) {
 
@@ -910,7 +980,8 @@
 
                         formula = formula.trim();
 
-                        let step = 0, items = tool.trimStringArray(formula.split(/is|=|!=|>|<|>=|<=|> =|< =/));
+                        let operators = /\s+not\s+|\s+like\s+|\s+is\s+|=|!=|>|</;
+                        let step = 0, items = tool.trimStringArray(formula.split(operators));
 
                         for (step = 0; step <= items.length - 1; ++step) {
                             // 解析表达式左侧, 偶数为左侧, 奇数为右侧
@@ -1006,13 +1077,27 @@
                 // 解析 where 表达式
                 parsingExpressionOfWhere(expression) {
 
-                    if(expression.indexOf(",") > -1){
+                    // where 表达式中如果有"," 则报错, 只允许有 and 等连接符
+                    if (expression.indexOf(",") > -1) {
 
                         // 只精确到Condition即可，不要精确到Where, 因为不只Where会使用这个解析, On也会使用这个解析
-                        tool.error({"msg":"Incorrect Condition Expression of ','", "trace":expression});
+                        tool.error({"msg": "Incorrect Condition Expression of ','", "trace": expression});
                     }
 
+                    // 如果是 between
+                    if (expression.split(/\s+between\s+/).length > 1) {
+
+                        // 处理 between and 部分
+                        let items = expression.split(/\s+between\s+|\s+and\s+/);
+                        this.common.parsingBetween(items[0] + " between " + items[1] + " and " + items[2]);
+
+                        // 后面的继续处理
+                        expression = items.slice(3).join("");
+                    }
+
+                    // 切除连接符
                     let formulas = expression.split(/\s+and\s+|\s+or\s+/);
+
                     for (let formula of formulas) {
 
                         this.common.parsingCompareFormula(formula);
@@ -1104,6 +1189,8 @@
 
         init(tokens) {
 
+            tool.debug("SQLCompiler Steps syntacticAnalysis: tokens assign to parser.props.tokens");
+
             this.props.tokens = tokens;
             this.before();
             this.start();
@@ -1141,10 +1228,15 @@
                     }
                 }
             }
-            console.log(this.props.nesting_queries);
+
+            tool.debug("SQLCompiler Steps syntacticAnalysis: pre-processing", {
+                nesting_queries: this.props.nesting_queries,
+            });
         },
 
         start() {
+
+            tool.debug("SQLCompiler Steps syntacticAnalysis: start");
 
             // 状态机模型分析tokens
             for (let token of this.props.tokens) {
@@ -1173,6 +1265,10 @@
 
             // 开始解析
             this.parsing.running();
+
+            tool.debug("SQLCompiler Steps syntacticAnalysis: start ending", {
+                "ast": this.props.ast,
+            });
         },
 
         // 生成AST节点
@@ -1276,11 +1372,35 @@
     // 前端过程步骤
     let steps = {
 
-        clear: {
+        before: {
 
             work() {
 
                 parser.props.ast = tool.generateASTRootNode();
+
+                WORD_TABLE.sequence.keyword.any = (() => {
+
+                    return WORD_TABLE.sequence.keyword.sentence.concat(
+                        WORD_TABLE.sequence.keyword.clause,
+                        WORD_TABLE.sequence.keyword.other,
+                        WORD_TABLE.sequence.keyword.function
+                    );
+                })();
+                WORD_TABLE.terminator.punctuator.any = (() => {
+
+                    return WORD_TABLE.terminator.punctuator.arithmetic.concat(
+                        WORD_TABLE.terminator.punctuator.comparison,
+                        WORD_TABLE.terminator.punctuator.constructors,
+                        WORD_TABLE.terminator.punctuator.need_match,
+                        WORD_TABLE.terminator.punctuator.space,
+                    );
+                })();
+
+                tool.debug("SQLCompiler Steps before", {
+                    "ast": parser.props.ast,
+                    "keyword_any": WORD_TABLE.sequence.keyword.any,
+                    "punctuator_any": WORD_TABLE.terminator.punctuator.any
+                });
             }
         },
 
@@ -1288,8 +1408,8 @@
 
             work() {
 
-                let config = globalVariableContainer.config;
-                scanner.init(config.sql);
+                tool.debug("SQLCompiler Steps lexicalAnalysis");
+                scanner.init(globalVariableContainer.config.sql);
             }
         },
 
@@ -1297,6 +1417,7 @@
 
             work() {
 
+                tool.debug("SQLCompiler Steps syntacticAnalysis");
                 parser.init(scanner.props.tokens);
             }
         },
@@ -1305,14 +1426,19 @@
 
             work() {
 
+                tool.debug("SQLCompiler Steps semanticAnalysis");
                 analyzer.init();
             }
         }
     };
 
-    let SQLCompiler = function (config = {sql: ""}) {
+    let SQLCompiler = function (config = {}) {
 
-        globalVariableContainer.config = Object.assign({sql: ""}, config);
+        globalVariableContainer.config = Object.assign({
+            sql: "",
+            debug: true,
+            log_n: 1, // 打印日志序号从n开始
+        }, config);
     };
 
     SQLCompiler.prototype = {
@@ -1324,30 +1450,14 @@
 
         boot() {
 
-            WORD_TABLE.sequence.keyword.any = (() => {
-
-                return WORD_TABLE.sequence.keyword.sentence.concat(
-                    WORD_TABLE.sequence.keyword.clause,
-                    WORD_TABLE.sequence.keyword.other,
-                    WORD_TABLE.sequence.keyword.function
-                );
-            })();
-            WORD_TABLE.terminator.punctuator.any = (() => {
-
-                return WORD_TABLE.terminator.punctuator.arithmetic.concat(
-                    WORD_TABLE.terminator.punctuator.comparison,
-                    WORD_TABLE.terminator.punctuator.constructors,
-                    WORD_TABLE.terminator.punctuator.need_match,
-                    WORD_TABLE.terminator.punctuator.space,
-                );
-            })();
-
+            console.clear();
+            tool.debug("SQLCompiler booting");
             this.init();
         },
 
         init() {
 
-            this.steps.clear.work();
+            this.steps.before.work();
             this.steps.lexicalAnalysis.work();
             this.steps.syntacticAnalysis.work();
             this.steps.semanticAnalysis.work();
@@ -1386,6 +1496,8 @@
 
                 let nesting_queries = parser.props.nesting_queries;
 
+                tool.debug("SQLCompilerAPI format start");
+
                 function traverseObj(obj) {
 
                     if (!tool.propertyIsObj(obj)) {
@@ -1417,21 +1529,26 @@
 
                             if ("state" === property) {
 
+                                tool.debug("SQLCompilerAPI format handling ...");
+
                                 if ("sentence" === obj[property] && !tool.isUndefined(obj['value'])) {
 
-                                    sentence_indents = sentence * 8; // 语句缩进
+                                    // 语句缩进, 当前是第n个句子, 缩进就是n*8, 之所以不乘4是因为4是从句的缩进
+                                    sentence_indents = sentence * 8;
 
                                     enter_str = tool.makeContinuousStr(lines === 0 ? 0 : 1, "\n");
                                     indent_str = tool.makeContinuousStr(sentence_indents, " ");
-
                                     sql += (enter_str + indent_str + obj['value'].toUpperCase());
-                                    ++lines;
 
+                                    ++lines;
                                     ++sentence;
+                                    tool.debug("property is sentence: lines+1, sentence+1", {
+                                        "lines": lines,
+                                        "sentence": sentence,
+                                    });
                                 } else if ("clause" === obj[property] && !tool.isUndefined(obj['value'])) {
 
-                                    // clause_indents += 4;
-                                    clause_indents = sentence_indents + 4; // 从句缩进
+                                    clause_indents = sentence_indents + 4; // 从句缩进 = 句子缩进 + 4
                                     if ("union" === obj['value']) {
                                         clause_indents = 0;
                                     }
@@ -1439,7 +1556,13 @@
                                     indent_str = tool.makeContinuousStr(clause_indents, " ");
                                     enter_str = tool.makeContinuousStr(1, "\n");
                                     sql += (enter_str + indent_str + obj['value'].toUpperCase());
+
                                     ++lines;
+                                    tool.debug("property is sentence: lines+1, sentence+1", {
+                                        "lines": lines,
+                                        "clause": obj['value'],
+                                        "clause_indents": clause_indents,
+                                    });
                                 } else if (("expr" === obj[property] || "word" === obj[property]) && !tool.isUndefined(obj['value'])) {
 
                                     let val = obj['value'];
@@ -1447,17 +1570,26 @@
                                     // 如果是右括号, 则判断是否为子查询的右括号
                                     if (")" === val) {
 
-                                        console.log(obj);
-
                                         // 是子查询的右括号
                                         for (let i = 0; i <= nesting_queries.length - 1; ++i) {
 
                                             if (obj.token.index === nesting_queries[i].right_bracket_index) {
 
-                                                let indents = (i + 1) * 4;
-                                                indent_str = tool.makeContinuousStr(indents, " ");
+                                                // 子查询缩进为 (i+1)*4, 之所以i+1是因为全部的子查询是存在nesting_queries数组中的
+                                                // 第一个子查询的 i 为 0, 所以需要 +1, 以表示这是第1个子查询
+                                                // 乘4是因为右括号需要和from并列, from是从句, 其缩进为每次缩进4
+                                                // i*4是因为子查询SELECT间的缩进
+                                                let sub_query_indents = (i + 1) * 4 + (i) * 4;
+
+                                                indent_str = tool.makeContinuousStr(sub_query_indents, " ");
                                                 enter_str = tool.makeContinuousStr(1, "\n");
                                                 sql += (enter_str + indent_str + val);
+
+                                                ++lines;
+                                                tool.debug("property is sentence: lines+1, sentence+1", {
+                                                    "lines": lines,
+                                                    "sub_query_indents": sub_query_indents,
+                                                });
                                                 return;
                                             }
                                         }
@@ -1484,10 +1616,15 @@
                 }
 
                 traverseObj(parser.props.ast);
-                return {
+
+                let res = {
                     sql: sql,
                     lines: lines,
                 };
+
+                tool.debug("SQLCompilerAPI format ending", res);
+
+                return res;
             },
         },
     });

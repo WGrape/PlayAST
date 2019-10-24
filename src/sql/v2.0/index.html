@@ -97,13 +97,15 @@
             margin-right: 5px;
         }
 
-        .btn-collapse{
+        .btn-collapse {
             cursor: pointer;
             margin-right: 10px;
             background: #e3e3e3;
             padding: 5px;
             border-radius: 5px;
-        }.btn-collapse:hover{
+        }
+
+        .btn-collapse:hover {
 
             background: #ddd;
         }
@@ -159,12 +161,12 @@
     function formatSQL() {
 
         let enter_px = 25; // 即1个换行符代表几个px像素
-        let sql_format = sql_review_obj.SQLCompilerAPI.format();
-        sql_input_obj.val(sql_format.sql);
-        sql_input_obj.css("height", enter_px * sql_format.lines); // SQL输入域自适应高度
+        let res = sql_review_obj.SQLCompilerAPI.format();
+        sql_input_obj.val(res.sql);
+        sql_input_obj.css("height", enter_px * res.lines); // SQL输入域自适应高度
     }
 
-    function checkSyntax() {
+    function checkSyntax(config) {
 
         try {
 
@@ -172,7 +174,7 @@
             sql_review_obj.text(sql);
             json_renderer_obj.fadeOut(100);
 
-            sql_review_obj.SQLCompiler({sql: sql});
+            sql_review_obj.SQLCompiler(Object.assign({sql: sql}, config));
 
             let result = sql_review_obj.SQLCompilerAPI.closure.parser.props.ast;
             let input = eval('(' + JSON.stringify(result) + ')');
@@ -192,7 +194,7 @@
     let all_collapsed = false;
     $(document).on("click", "#Go", function () {
 
-        let input = checkSyntax();
+        let input = checkSyntax({"debug": false});
 
         if (input) {
 
@@ -201,6 +203,18 @@
             json_renderer_obj.jsonViewer(input, {collapsed: all_collapsed, withQuotes: false});
         }
     });
+    $(document).on("click", "#Debug", function () {
+
+        let input = checkSyntax({"debug": true});
+
+        if (input) {
+
+            all_collapsed = false;
+            json_renderer_obj.fadeIn();
+            json_renderer_obj.jsonViewer(input, {collapsed: all_collapsed, withQuotes: false});
+        }
+    });
+
 
     $(document).on("click", "#Collapse-all", function () {
 
