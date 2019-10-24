@@ -192,6 +192,8 @@
 
                 tool.error(error);
             }
+
+            return true;
         },
 
         // 表达式中是否含有函数
@@ -239,7 +241,8 @@
             }
 
             this.error({"msg": "Illegal Statement, only access select, update and delete", "trace": sql});
-        }
+        },
+
     };
 
     // 词法分析器
@@ -411,6 +414,7 @@
 
             tokens: [], // token流
             wordTable: WORD_TABLE,
+            nesting_queries: [], // 记录下嵌套查询的信息 {"query":"", "left_bracket_index":10, "right_bracket_index":10"}
 
             // 产物
             ast: tool.generateASTRootNode(),
@@ -564,20 +568,20 @@
                         let clause_nodes = sentence_nodes[i].next;
                         for (let j = 0; j <= clause_nodes.length - 1; ++j) {
 
+                            // 对表达式进行预处理
                             let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
+                            expression = expression.replace(/[()]/g, "").trim(); // 去掉括号
+                            if (expression.indexOf("by") === 0) {
+                                expression = expression.slice(2).trim(); // 去掉by
+                            }
 
+                            // 根据clause类型, 对表达式进行解析
                             if (0 === j) {
 
                                 parser.parsing.parsingExpr.parsingExpressionOfSelect(expression);
                             } else if ("from" === clause_nodes[j].value) {
 
-                                // 如果最后一个是"(", 则说明为子查询
-                                if ("(" === expression[expression.length - 1]) {
-
-                                    parser.parsing.parsingExpr.parsingExpressionOfSubQuery(expression);
-                                } else {
-                                    parser.parsing.parsingExpr.parsingExpressionOfFrom(expression);
-                                }
+                                parser.parsing.parsingExpr.parsingExpressionOfFrom(expression);
                             } else if ("union" === clause_nodes[j].value) {
 
                                 // 子查询
@@ -590,15 +594,9 @@
                                 parser.parsing.parsingExpr.parsingExpressionOfWhere(expression);
                             } else if ("group" === clause_nodes[j].value) {
 
-                                if (expression.indexOf("by") === 0) {
-                                    expression = expression.slice(2).trim(); // 去掉by
-                                }
                                 parser.parsing.parsingExpr.parsingExpressionOfGroup(expression);
                             } else if ("order" === clause_nodes[j].value) {
 
-                                if (expression.indexOf("by") === 0) {
-                                    expression = expression.slice(2).trim(); // 去掉by
-                                }
                                 parser.parsing.parsingExpr.parsingExpressionOfOrder(expression);
                             } else if ("limit" === clause_nodes[j].value) {
 
@@ -735,9 +733,12 @@
 
                         value = value.trim();
 
-                        this.parsingValueOfAssign(value);
-
                         // 可能是子查询
+                        // 1. 由于在parser的parsingSentenceOfSelect处理中已经把括号去掉了, 所以不会出现括号符
+                        // 2. 由于在parser的before处理中已经处理了子查询, 所以之后不需要考虑子查询
+
+                        // 非子查询
+                        this.parsingValueOfAssign(value);
                     },
 
                     // 解析值
@@ -814,25 +815,18 @@
                     },
 
                     // 解析列
-                    parsingColumn(str) {
+                    parsingPlainColumn(str) {
 
                         str = str.trim();
 
-                        if ("(" === str[str.length - 1]) {
-
-                            // 子查询
-                            parser.parsing.parsingExpr.parsingExpressionOfSubQuery(str);
-                        } else if (")" === str[str.length - 1]) {
-
-                            // 子查询的后括号
+                        if ("" === str) {
                             return true;
-                        } else {
-
-                            tool.regTest(/^[`]?[a-zA-Z0-9-_*]+[`]?$/, str, {
-                                "msg": "incorrect column",
-                                "trace": str,
-                            });
                         }
+
+                        return tool.regTest(/^[`]?[a-zA-Z0-9-_*]+[`]?$/, str, {
+                            "msg": "incorrect column",
+                            "trace": str,
+                        });
                     },
 
                     // 递归解析列
@@ -872,7 +866,7 @@
                             let str = (next_dot_index < 0) ? expression.slice(start) : expression.slice(start, next_dot_index); // 输入非法时, str为空, 不会被正则匹配成功
 
                             // 解析普通字段
-                            this.parsingColumn(str);
+                            this.parsingPlainColumn(str);
 
                             // 后面还有 dot 字符, 还需要继续解析
                             if (next_dot_index >= 0) {
@@ -915,7 +909,7 @@
 
                         formula = formula.trim();
 
-                        let step = 0, items = formula.split(/=|!=|>|<|>=|<=/);
+                        let step = 0, items = tool.trimStringArray(formula.split(/=|!=|>|<|>=|<=|> =|< =/));
 
                         for (step = 0; step <= items.length - 1; ++step) {
                             // 解析表达式左侧, 偶数为左侧, 奇数为右侧
@@ -1003,7 +997,7 @@
                 // 解析 where 表达式
                 parsingExpressionOfWhere(expression) {
 
-                    let formulas = expression.split(/and|or/);
+                    let formulas = expression.split(/\s+and\s+|\s+or\s+/);
                     for (let formula of formulas) {
 
                         this.common.parsingCompareFormula(formula);
@@ -1079,7 +1073,10 @@
                     if ("from" === type) {
 
                         return true;
-                    } else if ("union" === type && ("" === expression || "all" !== expression)) {
+                    } else if ("value_of_compare" === type) {
+
+                        return true;
+                    } else if ("union" === type && ("" === expression || "all" === expression)) {
 
                         return true;
                     } else {
@@ -1087,13 +1084,49 @@
                         tool.error({"msg": "Illegal sub_query", "trace": expression});
                     }
                 }
-            }
+            },
         },
 
         init(tokens) {
 
             this.props.tokens = tokens;
+            this.before();
             this.start();
+        },
+
+        before() {
+
+            // 清理
+            this.props.nesting_queries = [];
+
+            // 先对括号进行子查询匹配处理
+            let token_length = this.props.tokens.length;
+            for (let token of this.props.tokens) {
+
+                if ("(" === token.value) {
+
+                    for (let i = token.index + 1; i <= token_length - 1; ++i) {
+
+                        if ("select" === this.props.tokens[i].value) {
+
+                            let right_token = this.props.tokens[token.match_index];
+                            let right_bracket_seq = right_token.seq;
+                            this.props.nesting_queries.push({
+                                "query": scanner.props.stream.slice(token.seq, right_bracket_seq - 1),
+                                "left_bracket_token": token,
+                                "left_bracket_index": token.index,
+                                "left_bracket_seq": token.seq,
+
+                                "right_bracket_token": right_token,
+                                "right_bracket_index": token.match_index,
+                                "right_bracket_seq": right_bracket_seq,
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+            console.log(this.props.nesting_queries);
         },
 
         start() {
@@ -1336,6 +1369,8 @@
                 let indent_str = ""; // 缩进字符
                 let enter_str = ""; // 换行字符
 
+                let nesting_queries = parser.props.nesting_queries;
+
                 function traverseObj(obj) {
 
                     if (!tool.propertyIsObj(obj)) {
@@ -1393,10 +1428,34 @@
                                 } else if (("expr" === obj[property] || "word" === obj[property]) && !tool.isUndefined(obj['value'])) {
 
                                     let val = obj['value'];
-                                    if (scanner.props.wordTable.sequence.keyword.any.indexOf(val) > -1) {
-                                        val = val.toUpperCase();
+
+                                    // 如果是右括号, 则判断是否为子查询的右括号
+                                    if (")" === val) {
+
+                                        console.log(obj);
+                                        for (let i = 0; i <= nesting_queries.length - 1; ++i) {
+
+                                            if (obj.token.index === nesting_queries[i].right_bracket_index) {
+
+                                                let indents = (i + 1) * 4;
+                                                indent_str = tool.makeContinuousStr(indents, " ");
+                                                enter_str = tool.makeContinuousStr(1, "\n");
+                                                sql += (enter_str + indent_str + val);
+                                            }
+                                        }
                                     }
-                                    sql += val;
+
+                                    // 如果是关键字
+                                    else if (scanner.props.wordTable.sequence.keyword.any.indexOf(val) > -1) {
+                                        val = val.toUpperCase();
+                                        sql += val;
+                                    }
+
+                                    // 普通字符
+                                    else {
+
+                                        sql += val;
+                                    }
                                 }
                             }
                         }

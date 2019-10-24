@@ -39,5 +39,30 @@ SELECT * fds;
 update test;
 
 
+SELECT * FROM articles WHERE  id >=
+ (SELECT id FROM articles  WHERE category_id = 123 ORDER BY id LIMIT 10000, 1) LIMIT 10
+
+
+ SELECT * FROM `content` AS t1
+JOIN (SELECT id FROM `content` ORDER BY id desc LIMIT ".($page-1)*$pagesize.", 1) AS t2
+WHERE t1.id <= t2.id ORDER BY t1.id desc LIMIT $pagesize;
+
+
+SELECT * FROM articles WHERE id >= ( SELECT id FROM articles WHERE category_id = 123 ORDER BY id LIMIT 10000, 1) LIMIT 10 UNION all select * from test
+
+SELECT * FROM articles WHERE id >= ( SELECT id FROM articles WHERE category_id = 123 ORDER BY id LIMIT 10000, 1) LIMIT 10 UNION all select * from test
+
+
+
+SELECT * FROM articles WHERE id>=(SELECT id FROM articles WHERE category_id = 123 ORDER BY id LIMIT 10000, 1) LIMIT 10 UNION ALL SELECT * FROM test ;
+
+
+select * from ( select * from test )
+
+
+
+SELECT * FROM articles WHERE id>=(SELECT ( id FROM articles WHERE category_id = 123 ORDER BY id LIMIT 10000, 1) LIMIT 10 UNION ALL SELECT * FROM test ;
+
+
 
 
