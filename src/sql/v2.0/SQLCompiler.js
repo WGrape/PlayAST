@@ -1433,6 +1433,8 @@
                                     if (")" === val) {
 
                                         console.log(obj);
+
+                                        // 是子查询的右括号
                                         for (let i = 0; i <= nesting_queries.length - 1; ++i) {
 
                                             if (obj.token.index === nesting_queries[i].right_bracket_index) {
@@ -1441,8 +1443,12 @@
                                                 indent_str = tool.makeContinuousStr(indents, " ");
                                                 enter_str = tool.makeContinuousStr(1, "\n");
                                                 sql += (enter_str + indent_str + val);
+                                                return;
                                             }
                                         }
+
+                                        // 不是子查询的右括号
+                                        sql += val;
                                     }
 
                                     // 如果是关键字
