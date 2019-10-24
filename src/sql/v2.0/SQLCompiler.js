@@ -1,6 +1,6 @@
 /**
  * TODO:
- *
+ * 1. 编程要定义最少的数据源, 多数据源则会造成编程的杂乱(不只数据源, 修改操作等都要求少, 而不是求多)
  */
 (function () {
 
@@ -558,6 +558,10 @@
         parsing: {
 
             running() {
+
+                if (!globalVariableContainer.config.parsing_enable) {
+                    return;
+                }
 
                 tool.debug("SQLCompiler Steps syntacticAnalysis: parsing");
                 this.parsingSentence.go();
@@ -1449,6 +1453,7 @@
             sql: "",
             debug: true,
             log_n: 1, // 打印日志序号从n开始
+            parsing_enable: true, // 是否启用语法解析
         }, config);
     };
 
