@@ -102,6 +102,8 @@
 
 <body>
 
+<h2>SQL解析 V1.0</h2>
+
 <p id="SQL_Review"></p>
 
 <textarea id="SQL_Input">select productid , avg( orderqty ) as averagequantity , sum( linetotal ) as total from sales.salesorderdetail group by productid having sum( linetotal ) > $1000000.00 and avg( orderqty ) < 3 ;</textarea>

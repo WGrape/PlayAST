@@ -59,7 +59,14 @@ SELECT * FROM articles WHERE id>=(SELECT id FROM articles WHERE category_id = 12
 
 select * from ( select * from test )
 
+select * from (A) ( select * from test )
 
+SELECT * FROM (a) a A ( SELECT * FROM test );
+
+
+SELECT *
+    FROM a
+    INNER JOIN b ON a.id = b.id;
 
 SELECT * FROM articles WHERE id>=(SELECT ( id FROM articles WHERE category_id = 123 ORDER BY id LIMIT 10000, 1) LIMIT 10 UNION ALL SELECT * FROM test ;
 

@@ -586,8 +586,9 @@
 
                                 // 子查询
                                 parser.parsing.parsingExpr.parsingExpressionOfSubQuery(expression, "union");
-                            } else if (["left join", "right join", "inner join"].indexOf(clause_nodes[j].value) > -1) {
+                            } else if ("join" === clause_nodes[j].value) {
 
+                                // 因为left/right/inner和join的合并是在语义分析阶段才做, 所以目前要以join为判断条件
                                 parser.parsing.parsingExpr.parsingExpressionOfJoin(expression);
                             } else if ("where" === clause_nodes[j].value) {
 
@@ -835,7 +836,7 @@
                         expression = expression.trim();
 
                         // 如果有别名, 则解析别名( 如果有 as, 或者有空格 )
-                        for (let alias_sign of ["as", " "]) {
+                        for (let alias_sign of [/\s+as\s+/, " "]) {
 
                             let columns = tool.trimStringArray(expression.split(alias_sign)).length;
                             if (2 === columns) {
@@ -909,7 +910,7 @@
 
                         formula = formula.trim();
 
-                        let step = 0, items = tool.trimStringArray(formula.split(/=|!=|>|<|>=|<=|> =|< =/));
+                        let step = 0, items = tool.trimStringArray(formula.split(/is|=|!=|>|<|>=|<=|> =|< =/));
 
                         for (step = 0; step <= items.length - 1; ++step) {
                             // 解析表达式左侧, 偶数为左侧, 奇数为右侧
@@ -940,7 +941,11 @@
                 // 解析 update 字段列表表达式
                 parsingExpressionOfUpdate(expression) {
 
-                    this.common.parsingColumnOfDot(expression, -1, 0, 2);
+                    let columns = expression.split(",");
+                    for (let column of columns) {
+
+                        this.common.parsingColumnOfDot(column, -1, 0, 2);
+                    }
                 },
 
                 // 解析 delete 字段列表表达式
@@ -954,7 +959,11 @@
                 // 解析 from 表达式
                 parsingExpressionOfFrom(expression) {
 
-                    this.common.parsingColumnOfDot(expression, -1, 0, 2);
+                    let columns = expression.split(",");
+                    for (let column of columns) {
+
+                        this.common.parsingColumnOfDot(column, -1, 0, 2);
+                    }
                 },
 
                 // 解析 order 表达式
@@ -989,13 +998,19 @@
                     let table = expression.split("on")[0];
                     this.common.parsingColumnOfDot(table, -1, 0, 2);
 
-                    let remain = expression.split("on")[1];
-
-
+                    // 解析join条件
+                    let condition = expression.split("on")[1];
+                    this.parsingExpressionOfWhere(condition);
                 },
 
                 // 解析 where 表达式
                 parsingExpressionOfWhere(expression) {
+
+                    if(expression.indexOf(",") > -1){
+
+                        // 只精确到Condition即可，不要精确到Where, 因为不只Where会使用这个解析, On也会使用这个解析
+                        tool.error({"msg":"Incorrect Condition Expression of ','", "trace":expression});
+                    }
 
                     let formulas = expression.split(/\s+and\s+|\s+or\s+/);
                     for (let formula of formulas) {
@@ -1107,7 +1122,7 @@
 
                     for (let i = token.index + 1; i <= token_length - 1; ++i) {
 
-                        if ("select" === this.props.tokens[i].value) {
+                        if ("select" === this.props.tokens[i].value && token.match_index > i) {
 
                             let right_token = this.props.tokens[token.match_index];
                             let right_bracket_seq = right_token.seq;
