@@ -51,6 +51,7 @@
                 constructors: ['.', '(', ')', ',', ';', '"', '\'', '`', ':'], // 构造符
                 need_match: ['(', ')', '"', '\'', '`'], // 需要匹配的字符
                 space: [' ', '\t', '\n', '\r'], // 空白符
+                illegal: [',', ':'], // 不应该在末端出现的非法字符
                 any: [],
             },
         },
@@ -618,12 +619,17 @@
                                 "clause": clause_nodes[j].value,
                             });
 
-
                             // expression 的解析不应受到这些字符的影响
                             expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
-                            expression = expression.replace(/[()]/g, "").trim(); // 去掉括号
+                            expression = expression.replace(/[(]/g, "").trim(); // 去掉括号(仅去左括号)
                             if (expression.indexOf("by") === 0) {
                                 expression = expression.slice(2).trim(); // 去掉by
+                            }
+
+                            // 解决最末端写 "," 的错误SQL
+                            if (parser.props.wordTable.terminator.punctuator.illegal.indexOf(expression[expression.length - 1]) > -1) {
+
+                                tool.error({"msg": "Illegal Punctuator at The End", "trace": expression});
                             }
 
                             // 根据clause类型, 对表达式进行解析
@@ -669,7 +675,12 @@
 
                     for (let j = 0; j <= clause_nodes.length - 1; ++j) {
 
+                        // 对表达式进行预处理
                         let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
+
+                        // expression 的解析不应受到这些字符的影响
+                        expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
+                        expression = expression.replace(/[(]/g, "").trim(); // 去掉括号(仅去左括号)
 
                         if (0 === j) {
 
@@ -710,7 +721,12 @@
 
                     for (let j = 0; j <= clause_nodes.length - 1; ++j) {
 
+                        // 对表达式进行预处理
                         let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
+
+                        // expression 的解析不应受到这些字符的影响
+                        expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
+                        expression = expression.replace(/[(]/g, "").trim(); // 去掉括号(仅去左括号)
 
                         if (0 === j) {
 
@@ -854,7 +870,7 @@
 
                         expression = expression.trim();
 
-                        let columns = expression.split(separator);
+                        let columns = tool.trimStringArray(expression.split(separator));
                         if (columns.length !== 2) {
 
                             tool.error({"msg": "Incorrect Alias Expression", "trace": expression});
@@ -905,8 +921,8 @@
 
                         expression = expression.trim();
 
-                        // 如果有别名, 则解析别名( 如果有 as, 或者有空格 )
-                        for (let alias_sign of [/\s+as\s+/, " "]) {
+                        // 如果有别名, 则解析别名( 如果有 as, 有右括号, 或者有空格 )
+                        for (let alias_sign of [/\s+as\s+/, /\s+\)\s+/, " "]) {
 
                             let columns = tool.trimStringArray(expression.split(alias_sign)).length;
                             if (2 === columns) {
@@ -983,17 +999,25 @@
                         let operators = /\s+not\s+|\s+like\s+|\s+is\s+|=|!=|>|</;
                         let step = 0, items = tool.trimStringArray(formula.split(operators));
 
-                        for (step = 0; step <= items.length - 1; ++step) {
-                            // 解析表达式左侧, 偶数为左侧, 奇数为右侧
-                            if (0 === step % 2) {
+                        if (1 === items.length) {
 
-                                this.parsingColumnOfDot(items[step]);
-                            }
+                            // 1. 等式可能只有1个值, 如 where 1 and 1 and column and function 等这种情况
+                            // 2. 在 parsingExpressionOfWhere 中把 between 也切割了, 故调用parsingCompareFormula时, 碰巧也会出现这种单值的情况
+                            this.parsingString(items[0]);
+                        } else {
 
-                            // 解析表达式右侧
-                            else {
+                            for (step = 0; step <= items.length - 1; ++step) {
+                                // 解析表达式左侧, 偶数为左侧, 奇数为右侧
+                                if (0 === step % 2) {
 
-                                this.parsingValueOfCompare(items[step]);
+                                    this.parsingColumnOfDot(items[step]);
+                                }
+
+                                // 解析表达式右侧
+                                else {
+
+                                    this.parsingValueOfCompare(items[step]);
+                                }
                             }
                         }
                     },
@@ -1084,20 +1108,8 @@
                         tool.error({"msg": "Incorrect Condition Expression of ','", "trace": expression});
                     }
 
-                    // 如果是 between
-                    if (expression.split(/\s+between\s+/).length > 1) {
-
-                        // 处理 between and 部分
-                        let items = expression.split(/\s+between\s+|\s+and\s+/);
-                        this.common.parsingBetween(items[0] + " between " + items[1] + " and " + items[2]);
-
-                        // 后面的继续处理
-                        expression = items.slice(3).join("");
-                    }
-
                     // 切除连接符
-                    let formulas = expression.split(/\s+and\s+|\s+or\s+/);
-
+                    let formulas = expression.split(/\s+between\s+|\s+and\s+|\s+or\s+/); // 包括 between运算
                     for (let formula of formulas) {
 
                         this.common.parsingCompareFormula(formula);
@@ -1453,6 +1465,11 @@
             console.clear();
             tool.debug("SQLCompiler booting");
             this.init();
+            tool.debug("SQLCompiler ending", {
+                tool: tool,
+                scanner: scanner,
+                parser: parser,
+            });
         },
 
         init() {
@@ -1488,6 +1505,7 @@
                 let sql = "";
                 let lines = 0; // 记录当前的行数
                 let sentence = 0;
+                let unions = 0; // union的个数
                 let clause_indents = 0; // 记录当前的clause缩进
                 let sentence_indents = 0; // 记录当前的语句缩进
 
@@ -1550,7 +1568,9 @@
 
                                     clause_indents = sentence_indents + 4; // 从句缩进 = 句子缩进 + 4
                                     if ("union" === obj['value']) {
+                                        ++unions;
                                         clause_indents = 0;
+                                        sentence = sentence - unions; // 需要自减一,
                                     }
 
                                     indent_str = tool.makeContinuousStr(clause_indents, " ");

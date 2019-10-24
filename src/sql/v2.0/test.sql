@@ -1,3 +1,23 @@
+-- 正确SQL
+select * from ( select * from test ) A join B on A.id = B.id group by A.name having sum(age) > 0 where A.id = 100 and B.id between 10 and 20 and A.name is null and B.id like '%s' ;
+select * from ( select * from test A ) B union select * from ( select * from test C ) D
+select * from ( select * from test A ) B union select * from ( select * from test C ) D union select * from test2 E
+select id, name FROM test WHERE id > 10 and name < "key";
+
+update `test` set name = "key", age = 30 where id = 20
+UPDATE `test` A SET name = "key", `age` = 30 join test 2 B on A.id = B.id WHERE id = 20;
+
+delete from test a join b on a.id = b.id and a.name = b.name where id > 10;
+
+-- 错误SQL
+select id, name, from test
+select * from ( select * from test A ) B union select * from ( select * from test C ) D union select * from test2 E d
+
+delete test from test a join b on a.id = b.id and a.name = b.name where id > 10;
+
+
+
+-- 其他
 select * from (
 select * from (
  select * from A left join t union select * from Q
@@ -63,6 +83,9 @@ select * from (A) ( select * from test )
 
 SELECT * FROM (a) a A ( SELECT * FROM test );
 
+SELECT * FROM a, b, c, d, WHERE a.id > 10;
+
+
 
 SELECT *
     FROM a
@@ -82,7 +105,7 @@ SELECT *
 
 SELECT * FROM ( SELECT * FROM ( SELECT * FROM ( SELECT * FROM ( SELECT * FROM ( SELECT * FROM test ) ) ) ) );
 
-
+select * from A join B on A.id = B.id and A.id = B.ci group by A.name having sum(age) > 10 where A.age between 10 and 20
 
 
 SELECT *
