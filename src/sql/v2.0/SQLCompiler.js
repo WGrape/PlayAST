@@ -1,8 +1,6 @@
 /**
  * TODO:
- * 1. null 还没解决，SELECT * FROM test left join C WHERE id = 10 ORDER BY id DESC;
- * 2. 注意: 判断多写时不能过滤, 判断少写时需要过滤
- * 3. 子查询的括号格式化
+ *
  */
 (function () {
 
@@ -621,7 +619,8 @@
 
                             // expression 的解析不应受到这些字符的影响
                             expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
-                            expression = expression.replace(/[(]/g, "").trim(); // 去掉括号(仅去左括号)
+                            // expression = expression.replace(/[(]/g, "").trim(); // 去掉括号(仅去左括号)
+
                             if (expression.indexOf("by") === 0) {
                                 expression = expression.slice(2).trim(); // 去掉by
                             }
@@ -680,7 +679,6 @@
 
                         // expression 的解析不应受到这些字符的影响
                         expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
-                        expression = expression.replace(/[(]/g, "").trim(); // 去掉括号(仅去左括号)
 
                         if (0 === j) {
 
@@ -726,7 +724,6 @@
 
                         // expression 的解析不应受到这些字符的影响
                         expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
-                        expression = expression.replace(/[(]/g, "").trim(); // 去掉括号(仅去左括号)
 
                         if (0 === j) {
 
@@ -1054,7 +1051,7 @@
                 // 解析 from 表达式
                 parsingExpressionOfFrom(expression) {
 
-                    let columns = expression.split(",");
+                    let columns = expression.split(/\s*,\s*|\s*\(\s*/);
                     for (let column of columns) {
 
                         this.common.parsingColumnOfDot(column, -1, 0, 2);
@@ -1089,12 +1086,14 @@
                 // 解析 where 表达式
                 parsingExpressionOfJoin(expression) {
 
+                    let reg = /\s+on\s+/;
+
                     // 解析表
-                    let table = expression.split("on")[0];
+                    let table = expression.split(reg)[0];
                     this.common.parsingColumnOfDot(table, -1, 0, 2);
 
                     // 解析join条件
-                    let condition = expression.split("on")[1];
+                    let condition = expression.split(reg)[1];
                     this.parsingExpressionOfWhere(condition);
                 },
 
