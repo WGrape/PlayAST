@@ -1,7 +1,16 @@
 -- 正确SQL
 select * from ( select * from test ) A join B on A.id = B.id group by A.name having sum(age) > 0 where A.id = 100 and B.id between 10 and 20 and A.name is null and B.id like '%s' ;
 select * from ( select * from test A ) B union select * from ( select * from test C ) D
+select * from ( select * from ( select * from test ) )
 select * from ( select * from test A ) B union select * from ( select * from test C ) D union select * from test2 E
+SELECT * FROM test a INNER JOIN test2 b ON a.id = b.id AND a.name = b.name WHERE a.id BETWEEN 10 AND 20 UNION SELECT * FROM test3 union select name, id from ( select * from ( select count(id) from test4 ) )
+SELECT * FROM ( SELECT * FROM test a ) b UNION SELECT * FROM ( SELECT * FROM test c ) d UNION SELECT * FROM test UNION SELECT * FROM ( SELECT * FROM ( SELECT * FROM test ) );
+SELECT * FROM ( SELECT * FROM test a ) b UNION SELECT * FROM ( SELECT * FROM test c ) d UNION SELECT * FROM test UNION SELECT * FROM ( SELECT * FROM ( SELECT * FROM test ) ) union select * from ( select * from ( select * from ( select * from ( select * from ( select * from test ) ) ) ) )
+select * from ( select * from ( select * from ( select * from ( select * from ( select * from test ) ) ) ) )
+
+
+
+
 select id, name FROM test WHERE id > 10 and name < "key";
 
 update `test` set name = "key", age = 30 where id = 20
@@ -107,42 +116,4 @@ SELECT * FROM ( SELECT * FROM ( SELECT * FROM ( SELECT * FROM ( SELECT * FROM ( 
 
 select * from A join B on A.id = B.id and A.id = B.ci group by A.name having sum(age) > 10 where A.age between 10 and 20
 
-
-SELECT *
-    FROM (
-        SELECT *
-            FROM (
-                SELECT *
-                    FROM (
-                        SELECT *
-                            FROM (
-                                SELECT *
-                                    FROM (
-                                        SELECT *
-                                            FROM test
-                    )
-                )
-            )
-        )
-    );
-
-
-
-SELECT *
-    FROM (
-        SELECT *
-            FROM (
-                SELECT *
-                    FROM (
-                        SELECT *
-                            FROM (
-                                SELECT *
-                                    FROM (
-                                        SELECT *
-                                            FROM test
-                                    )
-                            )
-                    )
-            )
-    );
 

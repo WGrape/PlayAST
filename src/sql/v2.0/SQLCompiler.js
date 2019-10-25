@@ -907,8 +907,10 @@
 
                         str = str.trim();
 
-                        if ("" === str) {
-                            return true;
+                        for (let sign of ["", ")"]) {
+                            if (str.indexOf(sign) > -1) {
+                                return true;
+                            }
                         }
 
                         return tool.regTest(/^[`]?[a-zA-Z0-9-_*]+[`]?$/, str, {
@@ -922,8 +924,8 @@
 
                         expression = expression.trim();
 
-                        // 如果有别名, 则解析别名( 如果有 as, 有右括号, 或者有空格 )
-                        for (let alias_sign of [/\s+as\s+/, /\s+\)\s+/, " "]) {
+                        // 如果有别名, 则解析别名( 如果有 as, 有右括号[不能用/\s+\)\s+/正则], 或者有空格 )
+                        for (let alias_sign of [/\s+as\s+/, ")", " "]) {
 
                             let columns = tool.trimStringArray(expression.split(alias_sign)).length;
                             if (2 === columns) {
@@ -934,7 +936,7 @@
                             }
 
                             // 写了多个别名, 错误也会被捕捉到
-                            if (2 < columns) {
+                            if (2 < columns && expression.indexOf(")") < 0) {
 
                                 tool.error({"msg": "Incorrect Columns", "trace": expression});
                                 return;
@@ -1509,7 +1511,6 @@
                 let sql = "";
                 let lines = 0; // 记录当前的行数
                 let sentence = 0;
-                let unions = 0; // union的个数
                 let clause_indents = 0; // 记录当前的clause缩进
                 let sentence_indents = 0; // 记录当前的语句缩进
 
@@ -1519,6 +1520,15 @@
                 let nesting_queries = parser.props.nesting_queries;
 
                 tool.debug("SQLCompilerAPI format start");
+
+                function reset() {
+
+                    sentence = 0;
+                    clause_indents = 0;
+                    sentence_indents = 0;
+                    indent_str = "";
+                    enter_str = "";
+                }
 
                 function traverseObj(obj) {
 
@@ -1572,9 +1582,7 @@
 
                                     clause_indents = sentence_indents + 4; // 从句缩进 = 句子缩进 + 4
                                     if ("union" === obj['value']) {
-                                        ++unions;
-                                        clause_indents = 0;
-                                        sentence = sentence - unions; // 需要自减一,
+                                        reset();
                                     }
 
                                     indent_str = tool.makeContinuousStr(clause_indents, " ");
@@ -1603,13 +1611,14 @@
                                                 // 第一个子查询的 i 为 0, 所以需要 +1, 以表示这是第1个子查询
                                                 // 乘4是因为右括号需要和from并列, from是从句, 其缩进为每次缩进4
                                                 // i*4是因为子查询SELECT间的缩进
-                                                let sub_query_indents = (i + 1) * 4 + (i) * 4;
+                                                let sub_query_indents = (sentence - 2) * 8 + 4;
 
                                                 indent_str = tool.makeContinuousStr(sub_query_indents, " ");
                                                 enter_str = tool.makeContinuousStr(1, "\n");
                                                 sql += (enter_str + indent_str + val);
 
                                                 ++lines;
+                                                --sentence;
                                                 tool.debug("property is sentence: lines+1, sentence+1", {
                                                     "lines": lines,
                                                     "sub_query_indents": sub_query_indents,
