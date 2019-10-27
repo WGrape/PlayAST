@@ -376,7 +376,7 @@
             // 为符号做匹配处理
             for (let token of this.props.tokens) {
 
-                if ("Punctuator" !== token.type || this.props.wordTable.terminator.punctuator.need_match.indexOf(token.value) < 0) {
+                if ("punctuator" !== token.type || this.props.wordTable.terminator.punctuator.need_match.indexOf(token.value) < 0) {
                     continue;
                 }
 
@@ -406,7 +406,7 @@
 
                     let index = scanner.props.tokens.length;
                     scanner.props.tokens.push({
-                        "type": "Punctuator",
+                        "type": "punctuator",
                         "value": ch,
                         "index": index,
                         "seq": scanner.props.seq - ch.length + 1,
@@ -622,7 +622,7 @@
                             });
 
                             // expression 的解析不应受到这些字符的影响
-                            expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
+                            // expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
                             // expression = expression.replace(/[(]/g, "").trim(); // 去掉括号(仅去左括号)
 
                             if (expression.indexOf("by") === 0) {
@@ -771,6 +771,11 @@
                 // 共有的解析规则
                 common: {
 
+                    // 解析空白符
+                    parsingWhiteSpace(){
+
+                    },
+
                     // 解析数字
                     parsingNumber(expression, throw_error = false) {
 
@@ -791,9 +796,9 @@
                         expression = expression.trim();
                         try {
 
-                            return "string" === typeof expression;
+                            return new RegExp(/^"\s*.*\s*"$/).test(expression);
                         } catch (e) {
-                            tool.error({"msg": "Incorrect expression", "trace": expression});
+                            tool.error({"msg": "Not String expression", "trace": expression});
                         }
                     },
 
