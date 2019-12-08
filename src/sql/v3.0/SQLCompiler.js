@@ -4,6 +4,7 @@
  */
 (function () {
 
+    // 常量表
     const FSM = {
         SCANNER: {
             STATES: {
@@ -17,9 +18,18 @@
                 WORD: 1,
                 EXPR: 2,
                 CLAUSE: 3,
-                SENTENCE: 4,
+                STATEMENT: 4,
                 HANDLE: 0,
             }
+        },
+        TRANSLATOR: {
+            STATES: {
+                STATEMENT: 1,
+                CLAUSE: 2,
+                EXPR: 3,
+                WORD: 4,
+                HANDLE: 0,
+            },
         },
     };
     const WORD_TABLE = {
@@ -28,7 +38,7 @@
 
             keyword: {
 
-                sentence: ["select", "update", "insert", "delete"],
+                statement: ["select", "update", "insert", "delete"],
                 clause: ["union", "set", "values", "from", "where", "left", "inner", "right", "join", "group", "having", "order", "limit"],
 
                 other: ["into", "between", "and", "as", "like", "not", "desc", "asc", "on", "is", "or", "all", "by", "null"],
@@ -55,8 +65,18 @@
         },
     };
 
+    // 全局变量表
     let globalVariableContainer = {
-        config: {}, // 所有的配置都写这里, 不要写在 tool 里面
+
+        // 所有的配置都写这里, 不要写在 tool 里面
+        config: {
+
+            grammar: {
+
+                // 配置使用的语法类型
+                type: "mysql",
+            }
+        },
     };
     let tool = {
 
@@ -95,9 +115,48 @@
             return new Array(n + 1).join(str);
         },
 
+        // 注册AOP
+        registerAOP() {
+
+            Function.prototype.before = function (func) {
+
+                let _self = this;
+                return function () {
+
+                    if (false === func.apply(this, arguments)) {
+                        return false;
+                    }
+                    return _self.apply(this, arguments);
+                };
+            };
+
+            Function.prototype.after = function (func) {
+
+                let _self = this;
+                return function () {
+
+                    let ret = _self.apply(this, arguments);
+                    if (false === ret) {
+                        return false;
+                    }
+                    func.apply(this, arguments);
+                    return ret;
+                };
+            };
+        },
+
         propertyIsObj(obj) {
 
             return $.isPlainObject(obj);
+        },
+
+        isFunction(fn) {
+
+            return Object.prototype.toString.call(fn) === '[object Function]';
+        },
+
+        deepSpread(rule){
+
         },
 
         // 因为折叠会出现索引连续不上和length不变的情况, 故而需要清理掉zombie数据
@@ -159,10 +218,37 @@
             return {
                 "node": "root",
                 "state": "handle",
-                "next_state": "sentence",
+                "next_state": "statement",
                 "next_index": 0,
                 "next": [],
             };
+        },
+
+        // 生成AST节点
+        generateASTNode(node, token, extra) {
+
+            let ast_node = {
+
+                "node": node, // 节点类型 root, statement, clause, expr, word
+                "state": extra.state, // 分析时所处状态 root, statement, clause, expr, word 等同于 node
+                "next_state": extra.next_state, // 下一个跳转状态 statement, clause, expr, word
+                "next_index": 0, // next数组的下标
+                "next": [], // next数组, 新增的AST节点根据 next_index push 到目标 next 数组
+            };
+
+            if (!tool.isUndefined(token.value)) {
+                ast_node.value = token.value;
+            }
+
+            if (!tool.isUndefined(extra.expression)) {
+                ast_node.expression = extra.expression;
+            }
+
+            if ("{}" !== JSON.stringify(token)) {
+                ast_node.token = token;
+            }
+
+            return ast_node;
         },
 
         isUndefined(obj) {
@@ -236,6 +322,41 @@
             return new_arr;
         },
 
+        visitAST(ast, visitor) {
+
+            if (!tool.propertyIsObj(ast)) {
+
+                return;
+            }
+
+            let properties = Object.getOwnPropertyNames(ast);
+            for (let property of properties) {
+
+                // 属性值是数组
+                if (Array.isArray(ast[property])) {
+
+                    for (let item of ast[property]) {
+
+                        this.visitAST(item, visitor);
+                    }
+                }
+
+                // 属性值是对象
+                else if (tool.visitAST(ast[property])) {
+
+                    this.visitAST(ast[property], visitor);
+                }
+
+                // 属性值是字面值
+                else {
+
+                    if (ast[property] && tool.isFunction(ast[property])) {
+                        ast[property]();
+                    }
+                }
+            }
+        },
+
         // 语句类型: select, update, delete, insert
         judgeSQLType(sql) {
 
@@ -276,123 +397,6 @@
 
             // 产物
             tokens: [],
-        },
-
-        init(stream) {
-
-            tool.debug("SQLCompiler Steps lexicalAnalysis: stream assign to scanner.props.stream");
-            this.props.stream = stream;
-
-            this.before();
-            this.start();
-            this.after();
-        },
-
-        start() {
-
-            tool.debug("SQLCompiler Steps lexicalAnalysis: start");
-
-            let sequence = "";
-            while (!tool.isUndefined(sequence = this.gets())) {
-
-                if (sequence.length < 2) {
-                    this.fsm.events.flowtoCharState(sequence);
-                } else {
-                    this.fsm.events.flowtoWordState(sequence);
-                }
-            }
-
-            tool.debug("SQLCompiler Steps lexicalAnalysis: start ending");
-        },
-
-        // 从输入区读取字符序列，读到终止符为止
-        gets() {
-
-            let stream = this.props.stream;
-            let length = stream.length;
-            let seq = this.props.seq;
-
-            for (let i = seq; i <= length - 1; ++i) {
-
-                let sequence, ch = stream[i];
-                if (this.props.wordTable.terminator.punctuator.any.indexOf(ch) > -1) {
-
-                    if (seq === i) {
-
-                        sequence = stream.slice(seq, i + 1);
-                        this.props.seq = i + 1;
-                    } else {
-                        sequence = stream.slice(seq, i);
-                        this.props.seq = i;
-                    }
-
-                    return sequence;
-                }
-
-                if (length - 1 === i) {
-
-                    this.props.seq = i + 1;
-                    return stream.slice(seq, i + 1);
-                }
-            }
-
-            // stream最后的符号
-            if (seq === length - 1) {
-                this.props.seq = seq + 1;
-                return stream.slice(seq, seq + 1);
-            }
-
-            return undefined;
-        },
-
-        // 前置处理
-        before() {
-
-            // 换行符替换为空格
-            this.props.stream = $.trim(this.props.stream.replace(/\n/g, " ").toLowerCase());
-
-            // 多个空格替换为1个空格
-            this.props.stream = $.trim(this.props.stream.replace(/\s+/g, " ").toLowerCase());
-
-            // 最后添加分号
-            this.props.stream = this.props.stream.split(";")[0] + ";";
-
-            // tokens 情空
-            this.props.tokens = [];
-            this.props.seq = 0;
-
-            // 判断sql类型
-            this.props.sql_type = tool.judgeSQLType(this.props.stream);
-
-            tool.debug("SQLCompiler Steps lexicalAnalysis: pre-processing", {
-                stream: this.props.stream,
-                "sql_type": this.props.sql_type
-            });
-        },
-
-        // 后置处理
-        after() {
-
-            // 为符号做匹配处理
-            for (let token of this.props.tokens) {
-
-                if ("punctuator" !== token.type || this.props.wordTable.terminator.punctuator.need_match.indexOf(token.value) < 0) {
-                    continue;
-                }
-
-                if (!tool.isUndefined(token.match_index)) {
-                    continue;
-                }
-
-                let start = token.index;
-                let end = tool.punctuatorMatchByStack(this.props.tokens, start, token.value);
-                this.props.tokens[start].match_index = end;
-                this.props.tokens[end].match_index = start;
-            }
-
-            tool.debug("SQLCompiler Steps lexicalAnalysis: after ending", {
-                tokens: this.props.tokens
-            });
         },
 
         fsm: {
@@ -437,11 +441,184 @@
                     scanner.fsm.state = FSM.SCANNER.STATES.HANDLE;
                 }
             }
+        },
+
+        init(stream) {
+
+            this.props.stream = stream;
+
+            this.before();
+            this.start();
+            this.after();
+        },
+
+        // 前置处理
+        before() {
+
+            WORD_TABLE.sequence.keyword.any = (() => {
+
+                return WORD_TABLE.sequence.keyword.statement.concat(
+                    WORD_TABLE.sequence.keyword.clause,
+                    WORD_TABLE.sequence.keyword.other,
+                    WORD_TABLE.sequence.keyword.function
+                );
+            })();
+            WORD_TABLE.terminator.punctuator.any = (() => {
+
+                return WORD_TABLE.terminator.punctuator.arithmetic.concat(
+                    WORD_TABLE.terminator.punctuator.comparison,
+                    WORD_TABLE.terminator.punctuator.constructors,
+                    WORD_TABLE.terminator.punctuator.need_match,
+                    WORD_TABLE.terminator.punctuator.space,
+                );
+            })();
+
+            // 换行符替换为空格
+            this.props.stream = $.trim(this.props.stream.replace(/\n/g, " ").toLowerCase());
+
+            // 多个空格替换为1个空格
+            this.props.stream = $.trim(this.props.stream.replace(/\s+/g, " ").toLowerCase());
+
+            // 最后添加分号
+            this.props.stream = this.props.stream.split(";")[0] + ";";
+
+            // tokens 情空
+            this.props.tokens = [];
+            this.props.seq = 0;
+
+            // 判断sql类型
+            this.props.sql_type = tool.judgeSQLType(this.props.stream);
+        },
+
+        start() {
+
+            let sequence = "";
+            while (!tool.isUndefined(sequence = this.gets())) {
+
+                if (sequence.length < 2) {
+                    this.fsm.events.flowtoCharState(sequence);
+                } else {
+                    this.fsm.events.flowtoWordState(sequence);
+                }
+            }
+        },
+
+        // 后置处理
+        after() {
+
+            // 为符号做匹配处理
+            for (let token of this.props.tokens) {
+
+                if ("punctuator" !== token.type || this.props.wordTable.terminator.punctuator.need_match.indexOf(token.value) < 0) {
+                    continue;
+                }
+
+                if (!tool.isUndefined(token.match_index)) {
+                    continue;
+                }
+
+                let start = token.index;
+                let end = tool.punctuatorMatchByStack(this.props.tokens, start, token.value);
+                this.props.tokens[start].match_index = end;
+                this.props.tokens[end].match_index = start;
+            }
+        },
+
+        // 从输入区读取字符序列，读到终止符为止
+        gets() {
+
+            let stream = this.props.stream;
+            let length = stream.length;
+            let seq = this.props.seq;
+
+            for (let i = seq; i <= length - 1; ++i) {
+
+                let sequence, ch = stream[i];
+                if (this.props.wordTable.terminator.punctuator.any.indexOf(ch) > -1) {
+
+                    if (seq === i) {
+
+                        sequence = stream.slice(seq, i + 1);
+                        this.props.seq = i + 1;
+                    } else {
+                        sequence = stream.slice(seq, i);
+                        this.props.seq = i;
+                    }
+
+                    return sequence;
+                }
+
+                if (length - 1 === i) {
+
+                    this.props.seq = i + 1;
+                    return stream.slice(seq, i + 1);
+                }
+            }
+
+            // stream最后的符号
+            if (seq === length - 1) {
+                this.props.seq = seq + 1;
+                return stream.slice(seq, seq + 1);
+            }
+
+            return undefined;
+        },
+    };
+
+    // 在构建的时候，通过flowState实现Translator最好 ！！！！
+    let translator = {
+
+        props: {
+
+            rules: [],
+        },
+
+        init(state, token) {
+
+            this.props.rules.push(this.packRule(state, token));
+            this.start();
+        },
+
+        start() {
+
+
+        },
+
+        packRule(state, token) {
+
+            let type = globalVariableContainer.config.grammar.type;
+            type = "mysql";
+            let rule = [];
+
+            switch (state) {
+
+                case "word":
+                    break;
+
+                case "expr":
+                    break;
+
+                case "clause":
+
+                    break;
+
+                case "statement":
+
+                    if ("select" === token) {
+                        rule = grammar.type.select_statement;
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+
+            return rule;
         }
     };
 
-    // 语法解析器
-    let parser = {
+    // AST构建器
+    let builder = {
 
         props: {
 
@@ -450,7 +627,7 @@
             nesting_queries: [], // 记录下嵌套查询的信息 {"query":"", "left_bracket_index":10, "right_bracket_index":10"}
 
             // 产物
-            ast: tool.generateASTRootNode(),
+            ast: {},
         },
 
         fsm: {
@@ -463,9 +640,9 @@
                 flowtoWordState(token) {
 
                     let word = token.value;
-                    if (parser.props.wordTable.sequence.keyword.sentence.indexOf(word) > -1) {
+                    if (parser.props.wordTable.sequence.keyword.statement.indexOf(word) > -1) {
 
-                        parser.fsm.state = FSM.PARSER.STATES.SENTENCE;
+                        parser.fsm.state = FSM.PARSER.STATES.STATEMENT;
                         return;
                     } else if (parser.props.wordTable.sequence.keyword.clause.indexOf(word) > -1) {
 
@@ -474,25 +651,25 @@
                     }
 
                     let root = parser.props.ast;
-                    let sentence_node = root.next[root.next_index];
-                    if (sentence_node.next_index >= sentence_node.next.length) {
+                    let statement_node = root.next[root.next_index];
+                    if (statement_node.next_index >= statement_node.next.length) {
 
-                        sentence_node.next.push(parser.generateASTNode("clause", {}, {
+                        statement_node.next.push(tool.generateASTNode("clause", {}, {
                             "state": "clause",
                             "next_state": "word",
                         }));
                     }
 
-                    let clause_node = sentence_node.next[sentence_node.next_index];
+                    let clause_node = statement_node.next[statement_node.next_index];
                     if (clause_node.next_index >= clause_node.next.length) {
 
                         let expression = "";
                         if (!tool.isUndefined(clause_node.value)) {
                             expression = clause_node.value;
-                        } else if (!tool.isUndefined(sentence_node.value)) {
-                            expression = sentence_node.value;
+                        } else if (!tool.isUndefined(statement_node.value)) {
+                            expression = statement_node.value;
                         }
-                        clause_node.next.push(parser.generateASTNode("expr", {}, {
+                        clause_node.next.push(tool.generateASTNode("expr", {}, {
                             "state": "expr",
                             "next_state": "word",
                             "expression": expression,
@@ -501,11 +678,13 @@
                     clause_node.next_index = clause_node.next.length - 1;
 
                     let expr_node = clause_node.next[clause_node.next_index];
-                    expr_node.next.push(parser.generateASTNode("word", token, {
+                    expr_node.next.push(tool.generateASTNode("word", token, {
                         "state": "word",
                         "next_state": "handle",
                     }));
                     expr_node.next_index = expr_node.next.length - 1;
+
+                    translator.init("expr", token);
 
                     parser.fsm.state = FSM.PARSER.STATES.HANDLE;
                 },
@@ -514,14 +693,16 @@
                 flowtoExprState(token) {
 
                     let root = parser.props.ast;
-                    let sentence_node = root.next[root.next_index];
-                    let clause_node = sentence_node.next[sentence_node.next_index];
+                    let statement_node = root.next[root.next_index];
+                    let clause_node = statement_node.next[statement_node.next_index];
 
-                    clause_node.next.push(parser.generateASTNode("expr", token, {
+                    clause_node.next.push(tool.generateASTNode("expr", token, {
                         "state": "expr",
                         "next_state": "handle",
                     }));
                     clause_node.next_index = clause_node.next.length - 1;
+
+                    translator.init("expr", token);
 
                     parser.fsm.state = FSM.PARSER.STATES.HANDLE;
                 },
@@ -530,698 +711,47 @@
                 flowtoClauseState(token) {
 
                     let root = parser.props.ast;
-                    let sentence_node = root.next[root.next_index];
-                    sentence_node.next.push(parser.generateASTNode("clause", token, {
+                    let statement_node = root.next[root.next_index];
+                    statement_node.next.push(tool.generateASTNode("clause", token, {
                         "state": "clause",
                         "next_state": "handle",
                     }));
-                    sentence_node.next_index = sentence_node.next.length - 1;
+                    statement_node.next_index = statement_node.next.length - 1;
+
+                    translator.init("clause", token);
 
                     parser.fsm.state = FSM.PARSER.STATES.HANDLE;
                 },
 
-                // 转向Sentence状态
-                flowtoSentenceState(token) {
+                // 转向STATEMENT状态
+                flowtoStatementState(token) {
 
                     let root = parser.props.ast;
-                    root.next.push(parser.generateASTNode("sentence", token, {
-                        "state": "sentence",
+                    root.next.push(tool.generateASTNode("statement", token, {
+                        "state": "statement",
                         "next_state": "handle",
                     }));
                     root.next_index = root.next.length - 1;
 
+                    translator.init("statement", token);
+
                     parser.fsm.state = FSM.PARSER.STATES.HANDLE;
                 }
             },
         },
 
-        parsing: {
+        init() {
 
-            running() {
-
-                if (!globalVariableContainer.config.parsing_enable) {
-                    return;
-                }
-
-                tool.debug("SQLCompiler Steps syntacticAnalysis: parsing");
-                this.parsingSentence.go();
-            },
-
-            // 解析句子
-            parsingSentence: {
-
-                go() {
-
-                    switch (scanner.props.sql_type) {
-
-                        case "select":
-                            this.parsingSentenceOfSelect();
-                            break;
-
-                        case "update":
-                            this.parsingSentenceOfUpdate();
-                            break;
-
-                        case "delete":
-                            this.parsingSentenceOfDelete();
-                            break;
-
-                        case "insert":
-                            this.parsingSentenceOfInsert();
-                            break;
-
-                        default:
-                            this.error({"msg": "Illegal Statement", "trace": sql});
-                            break;
-                    }
-                },
-
-                parsingSentenceOfSelect() {
-
-                    let sentence_nodes = parser.props.ast.next;
-
-                    // 循环每一个语句
-                    for (let i = 0; i <= sentence_nodes.length - 1; ++i) {
-
-                        tool.debug("SQLCompiler Steps syntacticAnalysis: parsing select statement", {
-                            "sentence_node": sentence_nodes[i],
-                            "clause_nodes": sentence_nodes[i].next,
-                        });
-
-                        let clause_nodes = sentence_nodes[i].next;
-                        for (let j = 0; j <= clause_nodes.length - 1; ++j) {
-
-                            // 对表达式进行预处理
-                            let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
-
-                            tool.debug("SQLCompiler Steps syntacticAnalysis: parsing clause ...", {
-                                "expression": expression,
-                                "clause_node_next_nodes": clause_nodes[j].next[clause_nodes[j].next_index].next,
-                                "clause_node": clause_nodes[j].value,
-                                "clause": clause_nodes[j].value,
-                            });
-
-                            // expression 的解析不应受到这些字符的影响
-                            // expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
-                            // expression = expression.replace(/[(]/g, "").trim(); // 去掉括号(仅去左括号)
-
-                            if (expression.indexOf("by") === 0) {
-                                expression = expression.slice(2).trim(); // 去掉by
-                            }
-
-                            // 解决最末端写 "," 的错误SQL
-                            if (parser.props.wordTable.terminator.punctuator.illegal.indexOf(expression[expression.length - 1]) > -1) {
-
-                                tool.error({"msg": "Illegal Punctuator at The End", "trace": expression});
-                            }
-
-                            // 根据clause类型, 对表达式进行解析
-                            if (0 === j) {
-
-                                parser.parsing.parsingExpr.parsingExpressionOfSelect(expression);
-                            } else if ("from" === clause_nodes[j].value) {
-
-                                parser.parsing.parsingExpr.parsingExpressionOfFrom(expression);
-                            } else if ("union" === clause_nodes[j].value) {
-
-                                // 子查询
-                                parser.parsing.parsingExpr.parsingExpressionOfSubQuery(expression, "union");
-                            } else if ("join" === clause_nodes[j].value) {
-
-                                // 因为left/right/inner和join的合并是在语义分析阶段才做, 所以目前要以join为判断条件
-                                parser.parsing.parsingExpr.parsingExpressionOfJoin(expression);
-                            } else if ("where" === clause_nodes[j].value) {
-
-                                parser.parsing.parsingExpr.parsingExpressionOfWhere(expression);
-                            } else if ("group" === clause_nodes[j].value) {
-
-                                parser.parsing.parsingExpr.parsingExpressionOfGroup(expression);
-                            } else if ("order" === clause_nodes[j].value) {
-
-                                parser.parsing.parsingExpr.parsingExpressionOfOrder(expression);
-                            } else if ("limit" === clause_nodes[j].value) {
-
-                                parser.parsing.parsingExpr.parsingExpressionOfLimit(expression);
-                            } else if ("having" === clause_nodes[j].value) {
-
-                                parser.parsing.parsingExpr.parsingExpressionOfHaving(expression);
-                            }
-                        }
-                    }
-                },
-
-                parsingSentenceOfUpdate() {
-
-                    let sentence_nodes = parser.props.ast.next;
-
-                    let clause_nodes = sentence_nodes[0].next;
-
-                    for (let j = 0; j <= clause_nodes.length - 1; ++j) {
-
-                        // 对表达式进行预处理
-                        let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
-
-                        // expression 的解析不应受到这些字符的影响
-                        expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
-
-                        if (0 === j) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfUpdate(expression);
-                        } else if ("set" === clause_nodes[j].value) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfSet(expression);
-                        } else if (["left join", "right join", "inner join"].indexOf(clause_nodes[j].value) > -1) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfJoin(expression);
-                        } else if ("where" === clause_nodes[j].value) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfWhere(expression);
-                        } else if ("group" === clause_nodes[j].value) {
-
-                            if (expression.indexOf("by") === 0) {
-                                expression = expression.slice(2).trim(); // 去掉by
-                            }
-                            parser.parsing.parsingExpr.parsingExpressionOfGroup(expression);
-                        } else if ("order" === clause_nodes[j].value) {
-
-                            if (expression.indexOf("by") === 0) {
-                                expression = expression.slice(2).trim(); // 去掉by
-                            }
-                            parser.parsing.parsingExpr.parsingExpressionOfOrder(expression);
-                        } else if ("limit" === clause_nodes[j].value) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfLimit(expression);
-                        }
-                    }
-                },
-
-                parsingSentenceOfDelete() {
-
-                    let sentence_nodes = parser.props.ast.next;
-
-                    let clause_nodes = sentence_nodes[0].next;
-
-                    for (let j = 0; j <= clause_nodes.length - 1; ++j) {
-
-                        // 对表达式进行预处理
-                        let expression = tool.implodeArrByField(clause_nodes[j].next[clause_nodes[j].next_index].next);
-
-                        // expression 的解析不应受到这些字符的影响
-                        expression = expression.replace(/`/g, "").trim(); // 去掉"`"符号
-
-                        if (0 === j) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfDelete(expression);
-                        } else if ("from" === clause_nodes[j].value) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfFrom(expression);
-                        } else if (["left join", "right join", "inner join"].indexOf(clause_nodes[j].value) > -1) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfJoin(expression);
-                        } else if ("where" === clause_nodes[j].value) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfWhere(expression);
-                        } else if ("group" === clause_nodes[j].value) {
-
-                            if (expression.indexOf("by") === 0) {
-                                expression = expression.slice(2).trim(); // 去掉by
-                            }
-                            parser.parsing.parsingExpr.parsingExpressionOfGroup(expression);
-                        } else if ("order" === clause_nodes[j].value) {
-
-                            if (expression.indexOf("by") === 0) {
-                                expression = expression.slice(2).trim(); // 去掉by
-                            }
-                            parser.parsing.parsingExpr.parsingExpressionOfOrder(expression);
-                        } else if ("limit" === clause_nodes[j].value) {
-
-                            parser.parsing.parsingExpr.parsingExpressionOfLimit(expression);
-                        }
-                    }
-                },
-
-                parsingSentenceOfInsert() {
-
-                },
-            },
-
-            // 解析表达式, 用正则
-            parsingExpr: {
-
-                // 共有的解析规则
-                common: {
-
-                    // 解析空白符
-                    parsingWhiteSpace(){
-
-                    },
-
-                    // 解析数字
-                    parsingNumber(expression, throw_error = false) {
-
-                        expression = expression.trim();
-                        let res = (new RegExp(/^[0-9]+$/)).test(expression);
-
-                        if (!res && throw_error) {
-
-                            tool.error({"msg": "Not number", "trace": expression})
-                        }
-
-                        return res;
-                    },
-
-                    // 解析字符串
-                    parsingString(expression) {
-
-                        expression = expression.trim();
-                        try {
-
-                            return new RegExp(/^"\s*.*\s*"$/).test(expression);
-                        } catch (e) {
-                            tool.error({"msg": "Not String expression", "trace": expression});
-                        }
-                    },
-
-                    // 解析值
-                    parsingValueOfCompare(value) {
-
-                        value = value.trim();
-
-                        // 可能是子查询
-                        // 1. 由于在parser的parsingSentenceOfSelect处理中已经把括号去掉了, 所以不会出现括号符
-                        // 2. 由于在parser的before处理中已经处理了子查询, 所以之后不需要考虑子查询
-
-                        // 非子查询
-                        this.parsingValueOfAssign(value);
-                    },
-
-                    // 解析值
-                    parsingValueOfAssign(value) {
-
-                        value = value.trim();
-
-                        // 可能是数字
-                        if (this.parsingNumber(value)) {
-
-                            return true;
-                        }
-
-                        // 可能是字符串
-                        if (this.parsingString(value)) {
-                            return true;
-                        }
-
-                        // 其他类型
-                        return false;
-                    },
-
-                    // 解析函数参数
-                    parsingFunctionParam(expression) {
-
-                        expression = expression.trim();
-
-                        // 数字
-                        if (this.parsingNumber(expression)) {
-                            return true;
-                        }
-
-                        // 字符串
-                        if (this.parsingString(expression)) {
-                            return true;
-                        }
-
-                        // column
-                        this.parsingColumnOfDot(expression);
-                    },
-
-                    // 解析函数
-                    parsingFunction(expression) {
-
-                        expression = expression.trim();
-
-                        let start = tool.findNextCh(expression, 0, "(") + 1;
-                        let end = tool.findNextCh(expression, 0, ")");
-                        let params_str = expression.slice(start, end);
-
-                        // 解析参数列表
-                        let params = params_str.split(",");
-                        for (let param of params) {
-
-                            this.parsingFunctionParam(param);
-                        }
-                    },
-
-                    // 解析别名
-                    parsingAlias(expression, separator = "as") {
-
-                        expression = expression.trim();
-
-                        let columns = tool.trimStringArray(expression.split(separator));
-                        if (columns.length !== 2) {
-
-                            tool.error({"msg": "Incorrect Alias Expression", "trace": expression});
-                        }
-                        for (let column of columns) {
-
-                            column = column.trim();
-                            this.parsingColumnOfDot(column);
-                        }
-                    },
-
-                    // 解析 between 语法
-                    parsingBetween(expression) {
-
-                        let items = expression.split(/\s+between\s+|\s+and\s+/);
-
-                        // 有 between, 但是 between and 表达式不符合
-                        if (3 !== items.length) {
-
-                            tool.error({"msg": "Incorrect Between Expression", "trace": expression});
-                        }
-
-                        // 解析column
-                        this.parsingColumnOfDot(items[0]);
-
-                        // 解析Number
-                        this.parsingNumber(items[1], true);
-                        this.parsingNumber(items[2], true);
-                    },
-
-                    // 解析列
-                    parsingPlainColumn(str) {
-
-                        str = str.trim();
-
-                        for (let sign of ["", ")"]) {
-                            if (str.indexOf(sign) > -1) {
-                                return true;
-                            }
-                        }
-
-                        return tool.regTest(/^[`]?[a-zA-Z0-9-_*]+[`]?$/, str, {
-                            "msg": "incorrect column",
-                            "trace": str,
-                        });
-                    },
-
-                    // 递归解析列
-                    parsingColumnOfDot(expression, dot_index = -1, level = 0, max_level = 3) {
-
-                        expression = expression.trim();
-
-                        // 如果有别名, 则解析别名( 如果有 as, 有右括号[不能用/\s+\)\s+/正则], 或者有空格 )
-                        for (let alias_sign of [/\s+as\s+/, ")", " "]) {
-
-                            let columns = tool.trimStringArray(expression.split(alias_sign)).length;
-                            if (2 === columns) {
-
-                                // "a as".split("as") = ["a ", ""], 故这种错误(未写别名)也会捕捉到
-                                this.parsingAlias(expression, alias_sign);
-                                return;
-                            }
-
-                            // 写了多个别名, 错误也会被捕捉到
-                            if (2 < columns && expression.indexOf(")") < 0) {
-
-                                tool.error({"msg": "Incorrect Columns", "trace": expression});
-                                return;
-                            }
-                        }
-
-                        // 如果是函数, 则解析函数
-                        if (0 === level && tool.isExistFunctionInExpression(expression)) {
-
-                            // 递归深度为0时, 才能有函数, 即 : db.table.column.func()非法, func()合法
-                            this.parsingFunction(expression);
-                        } else {
-
-                            // 找到从 dot_index 到下一个 dot_index之间的字符串
-                            let start = dot_index + 1;
-                            let next_dot_index = tool.findNextCh(expression, start, '.');
-                            let str = (next_dot_index < 0) ? expression.slice(start) : expression.slice(start, next_dot_index); // 输入非法时, str为空, 不会被正则匹配成功
-
-                            // 解析普通字段
-                            this.parsingPlainColumn(str);
-
-                            // 后面还有 dot 字符, 还需要继续解析
-                            if (next_dot_index >= 0) {
-
-                                if (level >= max_level - 1) {
-
-                                    tool.error({"msg": "error:max level dot parsing limit", "trace": expression});
-                                }
-
-                                this.parsingColumnOfDot(expression, next_dot_index, level + 1);
-                            }
-                        }
-                    },
-
-                    // 解析 assign 算式, 如set
-                    parsingAssignFormula(formula) {
-
-                        formula = formula.trim();
-
-                        let step, items = formula.split("=");
-                        for (step = 0; step <= items.length - 1; ++step) {
-
-                            // 解析赋值表达式的左侧
-                            if (0 === step % 2) {
-                                this.parsingColumnOfDot(items[step]);
-                            }
-
-                            // 解析赋值表达式的右侧
-                            else {
-
-                                if (!this.parsingValueOfAssign(items[step])) {
-                                    tool.error({"msg": "Incorrect Assign", "trace": formula});
-                                }
-                            }
-                        }
-                    },
-
-                    // 解析 compare 算式, 如 where
-                    parsingCompareFormula(formula) {
-
-                        formula = formula.trim();
-
-                        let operators = /\s+not\s+|\s+like\s+|\s+is\s+|=|!=|>|</;
-                        let step = 0, items = tool.trimStringArray(formula.split(operators));
-
-                        if (1 === items.length) {
-
-                            // 1. 等式可能只有1个值, 如 where 1 and 1 and column and function 等这种情况
-                            // 2. 在 parsingExpressionOfWhere 中把 between 也切割了, 故调用parsingCompareFormula时, 碰巧也会出现这种单值的情况
-                            this.parsingString(items[0]);
-                        } else {
-
-                            for (step = 0; step <= items.length - 1; ++step) {
-                                // 解析表达式左侧, 偶数为左侧, 奇数为右侧
-                                if (0 === step % 2) {
-
-                                    this.parsingColumnOfDot(items[step]);
-                                }
-
-                                // 解析表达式右侧
-                                else {
-
-                                    this.parsingValueOfCompare(items[step]);
-                                }
-                            }
-                        }
-                    },
-                },
-
-                // 解析 select 字段列表表达式
-                parsingExpressionOfSelect(expression) {
-
-                    let columns = expression.split(",");
-                    for (let column of columns) {
-
-                        this.common.parsingColumnOfDot(column);
-                    }
-                },
-
-                // 解析 update 字段列表表达式
-                parsingExpressionOfUpdate(expression) {
-
-                    let columns = expression.split(",");
-                    for (let column of columns) {
-
-                        this.common.parsingColumnOfDot(column, -1, 0, 2);
-                    }
-                },
-
-                // 解析 delete 字段列表表达式
-                parsingExpressionOfDelete(expression) {
-
-                    if ("" !== expression) {
-                        tool.error({"msg": "Incorrect Delete", "trace": expression});
-                    }
-                },
-
-                // 解析 from 表达式
-                parsingExpressionOfFrom(expression) {
-
-                    let columns = expression.split(/\s*,\s*|\s*\(\s*/);
-                    for (let column of columns) {
-
-                        this.common.parsingColumnOfDot(column, -1, 0, 2);
-                    }
-                },
-
-                // 解析 order 表达式
-                parsingExpressionOfOrder(expression) {
-
-                    expression = expression.trim();
-
-                    let order_rules = expression.split(",");
-
-                    for (let order_rule of order_rules) {
-
-                        order_rule = order_rule.trim();
-
-                        let order_rule_length = order_rule.split(" ").length;
-                        if (1 === order_rule_length) {
-
-                            this.common.parsingColumnOfDot(order_rule);
-                        } else if (2 === order_rule_length && ["asc", "desc"].indexOf(order_rule.split(" ")[1]) < 0) {
-
-                            tool.error({"msg": "Incorrect Order, only access asc or desc", "trace": expression});
-                        } else if (2 !== order_rule_length) {
-
-                            tool.error({"msg": "Incorrect Order Expression", "trace": expression});
-                        }
-                    }
-                },
-
-                // 解析 where 表达式
-                parsingExpressionOfJoin(expression) {
-
-                    let reg = /\s+on\s+/;
-
-                    // 解析表
-                    let table = expression.split(reg)[0];
-                    this.common.parsingColumnOfDot(table, -1, 0, 2);
-
-                    // 解析join条件
-                    let condition = expression.split(reg)[1];
-                    this.parsingExpressionOfWhere(condition);
-                },
-
-                // 解析 where 表达式
-                parsingExpressionOfWhere(expression) {
-
-                    // where 表达式中如果有"," 则报错, 只允许有 and 等连接符
-                    if (expression.indexOf(",") > -1) {
-
-                        // 只精确到Condition即可，不要精确到Where, 因为不只Where会使用这个解析, On也会使用这个解析
-                        tool.error({"msg": "Incorrect Condition Expression of ','", "trace": expression});
-                    }
-
-                    // 切除连接符
-                    let formulas = expression.split(/\s+between\s+|\s+and\s+|\s+or\s+/); // 包括 between运算
-                    for (let formula of formulas) {
-
-                        this.common.parsingCompareFormula(formula);
-                    }
-                },
-
-                // 解析 set 表达式
-                parsingExpressionOfSet(expression) {
-
-                    let formulas = expression.split(/,/);
-                    for (let formula of formulas) {
-
-                        this.common.parsingAssignFormula(formula);
-                    }
-                },
-
-                // 解析 insert 表达式
-                parsingExpressionOfInsert(expression) {
-
-                    let columns = expression.split(/\(|\)|,/);
-                    for (let column of columns) {
-
-                        this.common.parsingColumnOfDot(column);
-                    }
-                },
-
-                // 解析 values 表达式
-                parsingExpressionOfValues(expression) {
-
-                    let values = expression.split(/\(|\)|,/);
-                    for (let value of values) {
-
-                        this.common.parsingValueOfAssign(value);
-                    }
-                },
-
-                // 解析 group 表达式
-                parsingExpressionOfGroup(expression) {
-
-                    let columns = expression.split(",");
-                    for (let column of columns) {
-
-                        this.common.parsingColumnOfDot(column);
-                    }
-                },
-
-                // 解析 Limit 表达式
-                parsingExpressionOfLimit(expression) {
-
-                    let numbers = expression.split(",");
-
-                    // 注意: 判断多写时不能过滤, 判断少写时需要过滤 (直接用trim前和trim后的数组长度比对是更好的方法)
-                    if (numbers.length !== tool.trimStringArray(numbers).length || numbers.length > 2) {
-
-                        tool.error({"msg": "Incorrect Limit Expression", "trace": expression});
-                    }
-
-                    for (let number of numbers) {
-
-                        this.common.parsingNumber(number, true);
-                    }
-                },
-
-                // 解析 Having 表达式
-                parsingExpressionOfHaving(expression) {
-
-                    this.parsingExpressionOfWhere(expression);
-                },
-
-                // 解析 子查询 表达式
-                parsingExpressionOfSubQuery(expression, type = "from") {
-
-                    if ("from" === type) {
-
-                        return true;
-                    } else if ("value_of_compare" === type) {
-
-                        return true;
-                    } else if ("union" === type && ("" === expression || "all" === expression)) {
-
-                        return true;
-                    } else {
-
-                        tool.error({"msg": "Illegal sub_query", "trace": expression});
-                    }
-                }
-            },
-        },
-
-        init(tokens) {
-
-            tool.debug("SQLCompiler Steps syntacticAnalysis: tokens assign to parser.props.tokens");
-
-            this.props.tokens = tokens;
             this.before();
             this.start();
+            this.after();
         },
 
         before() {
 
             // 清理
             this.props.nesting_queries = [];
+            this.props.ast = tool.generateASTRootNode();
 
             // 先对括号进行子查询匹配处理
             let token_length = this.props.tokens.length;
@@ -1250,15 +780,9 @@
                     }
                 }
             }
-
-            tool.debug("SQLCompiler Steps syntacticAnalysis: pre-processing", {
-                nesting_queries: this.props.nesting_queries,
-            });
         },
 
         start() {
-
-            tool.debug("SQLCompiler Steps syntacticAnalysis: start");
 
             // 状态机模型分析tokens
             for (let token of this.props.tokens) {
@@ -1270,8 +794,8 @@
                 while (FSM.PARSER.STATES.HANDLE !== this.fsm.state) {
 
                     switch (this.fsm.state) {
-                        case FSM.PARSER.STATES.SENTENCE:
-                            this.fsm.events.flowtoSentenceState(token);
+                        case FSM.PARSER.STATES.STATEMENT:
+                            this.fsm.events.flowtoStatementState(token);
                             break;
                         case FSM.PARSER.STATES.CLAUSE:
                             this.fsm.events.flowtoClauseState(token);
@@ -1284,176 +808,54 @@
                     }
                 }
             }
-
-            // 开始解析
-            this.parsing.running();
-
-            tool.debug("SQLCompiler Steps syntacticAnalysis: start ending", {
-                "ast": this.props.ast,
-            });
         },
 
-        // 生成AST节点
-        generateASTNode(node, token, extra) {
+        after() {
 
-            let ast_node = {
+            this.optimize();
+        },
 
-                "node": node, // 节点类型 root, sentence, clause, expr, word
-                "state": extra.state, // 分析时所处状态 root, sentence, clause, expr, word 等同于 node
-                "next_state": extra.next_state, // 下一个跳转状态 sentence, clause, expr, word
-                "next_index": 0, // next数组的下标
-                "next": [], // next数组, 新增的AST节点根据 next_index push 到目标 next 数组
-            };
+        optimize() {
 
-            if (!tool.isUndefined(token.value)) {
-                ast_node.value = token.value;
+            // 对子查询的AST结构进行调整
+            for (let token of this.props.tokens) {
+
             }
-
-            if (!tool.isUndefined(extra.expression)) {
-                ast_node.expression = extra.expression;
-            }
-
-            if ("{}" !== JSON.stringify(token)) {
-                ast_node.token = token;
-            }
-
-            return ast_node;
         },
-    };
-
-    // 语义分析器
-    let analyzer = {
-
-        props: {},
-
-        init() {
-
-            this.start();
-        },
-
-        start() {
-
-            this.optimize.combineNodes();
-        },
-
-        optimize: {
-
-            // 节点合并
-            combineNodes() {
-
-                // left/right/inner join (group by, order by不需要)
-                for (let i = 0; i <= parser.props.ast.next.length - 1; ++i) {
-
-                    let sentence_node = parser.props.ast.next[i];
-                    let clause_nodes = sentence_node.next;
-                    for (let i = 0; i <= clause_nodes.length - 1; ++i) {
-
-                        let current_clause_node = clause_nodes[i];
-                        if (tool.isUndefined(current_clause_node) || tool.isUndefined(current_clause_node.value)) {
-                            continue;
-                        }
-
-                        // 合并 join
-                        if (["left", "right", "inner"].indexOf(current_clause_node.value) > -1) {
-
-                            // 只有前置, 没有join
-                            let next_clause_node = clause_nodes[i + 1];
-                            if (tool.isUndefined(next_clause_node) || "join" !== next_clause_node.value) {
-
-                                let seq = clause_nodes[i].token.seq - 1 + clause_nodes[i].value.length;
-                                tool.error({
-                                    "msg": "incorrect join expression",
-                                    "trace": tool.truncateStr(scanner.props.stream, seq),
-                                    "seq": seq
-                                });
-                            }
-
-                            // 合并 join 后，由于left和join后面都有空格造成了多余空格的情况，所以需要删除一个空格
-                            let n_index = next_clause_node.next_index;
-                            let expr_node = next_clause_node.next[n_index];
-                            let word_node = expr_node.next[0];
-                            if (!tool.isUndefined(word_node) && " " === word_node.value) {
-                                delete (expr_node.next[0]);
-                            }
-
-                            // 实现 join 合并
-                            clause_nodes[i].value = clause_nodes[i].value + " join"; // concat
-                            clause_nodes[i].next = clause_nodes[i].next.concat(next_clause_node.next); // attach
-
-                            // 删除 join 并对 null 处理
-                            delete (clause_nodes[i + 1]); // 删除(注 delete next_clause_node 无效)
-                            sentence_node.next = tool.rebuildASTIndex(sentence_node.next);
-                        }
-                    }
-                }
-            },
-
-        }
     };
 
     // 前端过程步骤
     let steps = {
 
-        before: {
-
-            work() {
-
-                parser.props.ast = tool.generateASTRootNode();
-
-                WORD_TABLE.sequence.keyword.any = (() => {
-
-                    return WORD_TABLE.sequence.keyword.sentence.concat(
-                        WORD_TABLE.sequence.keyword.clause,
-                        WORD_TABLE.sequence.keyword.other,
-                        WORD_TABLE.sequence.keyword.function
-                    );
-                })();
-                WORD_TABLE.terminator.punctuator.any = (() => {
-
-                    return WORD_TABLE.terminator.punctuator.arithmetic.concat(
-                        WORD_TABLE.terminator.punctuator.comparison,
-                        WORD_TABLE.terminator.punctuator.constructors,
-                        WORD_TABLE.terminator.punctuator.need_match,
-                        WORD_TABLE.terminator.punctuator.space,
-                    );
-                })();
-
-                tool.debug("SQLCompiler Steps before", {
-                    "ast": parser.props.ast,
-                    "keyword_any": WORD_TABLE.sequence.keyword.any,
-                    "punctuator_any": WORD_TABLE.terminator.punctuator.any
-                });
-            }
-        },
-
+        // 词法分析
         lexicalAnalysis: {
 
             work() {
 
-                tool.debug("SQLCompiler Steps lexicalAnalysis");
                 scanner.init(globalVariableContainer.config.sql);
             }
         },
 
+        // 语法分析
         syntacticAnalysis: {
 
             work() {
 
-                tool.debug("SQLCompiler Steps syntacticAnalysis");
-                parser.init(scanner.props.tokens);
+                builder.init();
+                translator.init();
             }
         },
 
+        // 语义分析
         semanticAnalysis: {
 
             work() {
 
-                tool.debug("SQLCompiler Steps semanticAnalysis");
-                analyzer.init();
             }
         }
     };
 
+    // 定义 SQLCompiler
     let SQLCompiler = function (config = {}) {
 
         globalVariableContainer.config = Object.assign({
@@ -1463,7 +865,6 @@
             parsing_enable: true, // 是否启用语法解析
         }, config);
     };
-
     SQLCompiler.prototype = {
 
         tool: tool,
@@ -1473,18 +874,6 @@
 
         boot() {
 
-            console.clear();
-            tool.debug("SQLCompiler booting");
-            this.init();
-            tool.debug("SQLCompiler ending", {
-                tool: tool,
-                scanner: scanner,
-                parser: parser,
-            });
-        },
-
-        init() {
-
             this.steps.before.work();
             this.steps.lexicalAnalysis.work();
             this.steps.syntacticAnalysis.work();
@@ -1492,15 +881,8 @@
         },
     };
 
+    // 扩展 SQLCompiler 功能
     $.fn.extend({
-
-        SQLCompiler: function (config = {sql: ""}) {
-
-            return $(this).each(function () {
-
-                (new SQLCompiler(config)).boot();
-            });
-        },
 
         SQLCompilerAPI: {
 
@@ -1515,22 +897,20 @@
 
                 let sql = "";
                 let lines = 0; // 记录当前的行数
-                let sentence = 0;
+                let statement = 0;
                 let clause_indents = 0; // 记录当前的clause缩进
-                let sentence_indents = 0; // 记录当前的语句缩进
+                let statement_indents = 0; // 记录当前的语句缩进
 
                 let indent_str = ""; // 缩进字符
                 let enter_str = ""; // 换行字符
 
                 let nesting_queries = parser.props.nesting_queries;
 
-                tool.debug("SQLCompilerAPI format start");
-
                 function reset() {
 
-                    sentence = 0;
+                    statement = 0;
                     clause_indents = 0;
-                    sentence_indents = 0;
+                    statement_indents = 0;
                     indent_str = "";
                     enter_str = "";
                 }
@@ -1566,26 +946,20 @@
 
                             if ("state" === property) {
 
-                                tool.debug("SQLCompilerAPI format handling ...");
-
-                                if ("sentence" === obj[property] && !tool.isUndefined(obj['value'])) {
+                                if ("statement" === obj[property] && !tool.isUndefined(obj['value'])) {
 
                                     // 语句缩进, 当前是第n个句子, 缩进就是n*8, 之所以不乘4是因为4是从句的缩进
-                                    sentence_indents = sentence * 8;
+                                    statement_indents = statement * 8;
 
                                     enter_str = tool.makeContinuousStr(lines === 0 ? 0 : 1, "\n");
-                                    indent_str = tool.makeContinuousStr(sentence_indents, " ");
+                                    indent_str = tool.makeContinuousStr(statement_indents, " ");
                                     sql += (enter_str + indent_str + obj['value'].toUpperCase());
 
                                     ++lines;
-                                    ++sentence;
-                                    tool.debug("property is sentence: lines+1, sentence+1", {
-                                        "lines": lines,
-                                        "sentence": sentence,
-                                    });
+                                    ++statement;
                                 } else if ("clause" === obj[property] && !tool.isUndefined(obj['value'])) {
 
-                                    clause_indents = sentence_indents + 4; // 从句缩进 = 句子缩进 + 4
+                                    clause_indents = statement_indents + 4; // 从句缩进 = 句子缩进 + 4
                                     if ("union" === obj['value']) {
                                         reset();
                                     }
@@ -1595,11 +969,6 @@
                                     sql += (enter_str + indent_str + obj['value'].toUpperCase());
 
                                     ++lines;
-                                    tool.debug("property is sentence: lines+1, sentence+1", {
-                                        "lines": lines,
-                                        "clause": obj['value'],
-                                        "clause_indents": clause_indents,
-                                    });
                                 } else if (("expr" === obj[property] || "word" === obj[property]) && !tool.isUndefined(obj['value'])) {
 
                                     let val = obj['value'];
@@ -1616,18 +985,14 @@
                                                 // 第一个子查询的 i 为 0, 所以需要 +1, 以表示这是第1个子查询
                                                 // 乘4是因为右括号需要和from并列, from是从句, 其缩进为每次缩进4
                                                 // i*4是因为子查询SELECT间的缩进
-                                                let sub_query_indents = (sentence - 2) * 8 + 4;
+                                                let sub_query_indents = (statement - 2) * 8 + 4;
 
                                                 indent_str = tool.makeContinuousStr(sub_query_indents, " ");
                                                 enter_str = tool.makeContinuousStr(1, "\n");
                                                 sql += (enter_str + indent_str + val);
 
                                                 ++lines;
-                                                --sentence;
-                                                tool.debug("property is sentence: lines+1, sentence+1", {
-                                                    "lines": lines,
-                                                    "sub_query_indents": sub_query_indents,
-                                                });
+                                                --statement;
                                                 return;
                                             }
                                         }
@@ -1660,10 +1025,21 @@
                     lines: lines,
                 };
 
-                tool.debug("SQLCompilerAPI format ending", res);
-
                 return res;
             },
+
+            visitAST() {
+
+            },
+        },
+
+        SQLCompiler: function (config = {sql: ""}) {
+
+            return $(this).each(function () {
+
+                console.clear();
+                (new SQLCompiler(config)).boot();
+            });
         },
     });
 
