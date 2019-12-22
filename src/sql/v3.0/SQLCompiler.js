@@ -1,6 +1,7 @@
 /**
  * TODO:
  * 1. 编程要定义最少的数据源, 多数据源则会造成编程的杂乱(不只数据源, 修改操作等都要求少, 而不是求多)
+ * 2. 自动报错, 提供一种类似最外层 try-catch 机制, 实现错误步骤
  */
 (function () {
 
@@ -31,6 +32,11 @@
                 HANDLE: 0,
             },
         },
+    };
+    const PARSING_PROCESS = {
+        SUCCESS: 1,
+        FAILURE: 2,
+        PENDING: 3,
     };
     const WORD_TABLE = {
         // 序列
@@ -69,14 +75,7 @@
     let globalVariableContainer = {
 
         // 所有的配置都写这里, 不要写在 tool 里面
-        config: {
-
-            grammar: {
-
-                // 配置使用的语法类型
-                type: "mysql",
-            }
-        },
+        config: {},
     };
     let tool = {
 
@@ -115,33 +114,11 @@
             return new Array(n + 1).join(str);
         },
 
-        // 注册AOP
-        registerAOP() {
+        makeErrObj(msg, data = {}) {
 
-            Function.prototype.before = function (func) {
-
-                let _self = this;
-                return function () {
-
-                    if (false === func.apply(this, arguments)) {
-                        return false;
-                    }
-                    return _self.apply(this, arguments);
-                };
-            };
-
-            Function.prototype.after = function (func) {
-
-                let _self = this;
-                return function () {
-
-                    let ret = _self.apply(this, arguments);
-                    if (false === ret) {
-                        return false;
-                    }
-                    func.apply(this, arguments);
-                    return ret;
-                };
+            return {
+                msg: msg,
+                data: data,
             };
         },
 
@@ -150,13 +127,49 @@
             return $.isPlainObject(obj);
         },
 
+        pureValueAssign(value) {
+
+            return JSON.parse(JSON.stringify(value));
+        },
+
+        isEmptyObject(obj) {
+
+            return $.isEmptyObject(obj);
+        },
+
+        isEmptyArray(arr) {
+
+            if (arr.length < 1) {
+                return true;
+            }
+
+            return arr.every((arr) => {
+                return arr.length < 1;
+            });
+        },
+
         isFunction(fn) {
 
             return Object.prototype.toString.call(fn) === '[object Function]';
         },
 
-        deepSpread(rule){
+        // 移除数组中指定位置的元素, 且自动改变长度
+        arrayRemove(arr, index) {
 
+            return arr.splice(index, 1);
+        },
+
+        // 创造N个数组
+        newNArray(n) {
+
+            let result = [];
+
+            for (let i = 1; i <= n; ++i) {
+
+                result.push([]);
+            }
+
+            return result;
         },
 
         // 因为折叠会出现索引连续不上和length不变的情况, 故而需要清理掉zombie数据
@@ -213,15 +226,66 @@
             });
         },
 
+        /**
+         * 当前token是否是子查询的起始标志
+         * @param token
+         * @returns {boolean}
+         */
+        isSubqueryStartToken(token) {
+
+            if (!("Punctuator" === token.type && "(" === token.value)) {
+                return false;
+            }
+
+            for (let i = token.index - 1; i >= 0; --i) {
+
+                let i_token = scanner.props.tokens[i];
+                if ("Punctuator" === i_token.type && " " === i_token.value) {
+                    continue;
+                }
+                return ("Keyword" === i_token.type && "from" === i_token.value);
+            }
+
+            return false;
+        },
+
+        /**
+         * 当前token是否是子查询的终止标志
+         * @param token
+         * @returns {*}
+         */
+        isSubqueryEndToken(token) {
+
+            if (!("Punctuator" === token.type && ")" === token.value)) {
+                return false;
+            }
+
+            let image_token = scanner.props.tokens[token.match_index];
+
+            return tool.isSubqueryStartToken(image_token);
+        },
+
+        pruningASTNode(ast_node) {
+
+            let disabled_props = globalVariableContainer.config.ast.props.disabled;
+            for (let prop of disabled_props) {
+
+                delete ast_node[prop];
+            }
+
+            return ast_node;
+        },
+
         generateASTRootNode() {
 
-            return {
+            return this.pruningASTNode({
+
                 "node": "root",
                 "state": "handle",
                 "next_state": "statement",
                 "next_index": 0,
                 "next": [],
-            };
+            });
         },
 
         // 生成AST节点
@@ -248,7 +312,7 @@
                 ast_node.token = token;
             }
 
-            return ast_node;
+            return this.pruningASTNode(ast_node);
         },
 
         isUndefined(obj) {
@@ -410,7 +474,7 @@
 
                     let index = scanner.props.tokens.length;
                     scanner.props.tokens.push({
-                        "type": "punctuator",
+                        "type": "Punctuator",
                         "value": ch,
                         "index": index,
                         "seq": scanner.props.seq - ch.length + 1,
@@ -509,7 +573,7 @@
             // 为符号做匹配处理
             for (let token of this.props.tokens) {
 
-                if ("punctuator" !== token.type || this.props.wordTable.terminator.punctuator.need_match.indexOf(token.value) < 0) {
+                if ("Punctuator" !== token.type || this.props.wordTable.terminator.punctuator.need_match.indexOf(token.value) < 0) {
                     continue;
                 }
 
@@ -565,56 +629,490 @@
         },
     };
 
-    // 在构建的时候，通过flowState实现Translator最好 ！！！！
+    // 翻译器
     let translator = {
 
         props: {
 
-            rules: [],
+            maze: {},
+            meta_sequence: [],
+            parsing_result: {
+
+                process: PARSING_PROCESS.FAILURE,
+                errno: -1,
+                message: "",
+                data: {},
+            },
+
+            // 模拟寄存器存储数据
+            registers: {
+
+                // 累加器
+                ax: {
+
+                    "statement": 0,
+                    "statement_meta_queue": [],
+                    "clause_meta_queue": [],
+                },
+
+                // 堆栈寄存器
+                sp: {
+
+                    "statement": 0,
+                },
+            },
         },
 
-        init(state, token) {
+        core: {
 
-            this.props.rules.push(this.packRule(state, token));
-            this.start();
-        },
+            // 核心步骤
+            step: {
 
-        start() {
+                translate(state, token) {
 
+                    let _this = translator;
+                    let meta = {"state": state, "token": token};
+                    _this.props.meta_sequence.push(meta);
 
-        },
+                    // 构建 maze
+                    let production_name = token.value + "_" + state;
+                    if (tool.isEmptyObject(_this.props.maze)) {
 
-        packRule(state, token) {
+                        // 初始构建 maze
+                        _this.props.maze = _this.core.procedure.buildMaze(meta);
 
-            let type = globalVariableContainer.config.grammar.type;
-            type = "mysql";
-            let rule = [];
+                    } else if (_this.isSelectStatementProduction(production_name)) {
 
-            switch (state) {
-
-                case "word":
-                    break;
-
-                case "expr":
-                    break;
-
-                case "clause":
-
-                    break;
-
-                case "statement":
-
-                    if ("select" === token) {
-                        rule = grammar.type.select_statement;
+                        // 追加构建 maze
+                        _this.props.maze = _this.core.procedure.buildMazeAppended(meta, _this.props.maze);
                     }
-                    break;
 
-                default:
-                    break;
+                    // 根据当前的状态解析
+                    let res = PARSING_PROCESS.FAILURE;
+                    switch (state) {
+
+                        case "statement":
+
+                            ++_this.props.registers.ax.statement; // statement个数+1
+                            ++_this.props.registers.sp.statement; // 当前所在的statement
+                            _this.props.registers.ax.statement_meta_queue.push(meta);
+
+                            let th = _this.props.registers.ax.statement;
+                            res = this.translateStatementState(production_name, _this.props.maze, th);
+                            break;
+
+                        case "clause":
+
+                            let statement_th = _this.props.registers.sp.statement;
+
+                            ++_this.props.registers.ax.statement;
+                            _this.props.registers.ax.clause_meta_queue[statement_th].push(meta);
+
+                            res = this.translateClauseState(production_name, _this.props.maze, statement_th, meta);
+                            break;
+
+                        case "word":
+                        default:
+
+                            // 如果当前token是子查询的终止token
+                            if (tool.isSubqueryEndToken(token)) {
+
+                                --_this.props.registers.sp.statement;
+                            }
+
+                            res = _this.core.procedure.exploreMazeBFS(production_name, _this.props.maze, meta);
+                            break;
+                    }
+
+                    // 解析结果
+                    if (PARSING_PROCESS.SUCCESS !== res) {
+
+                        // 解析失败
+                        tool.makeErrObj(_this.props.parsing_result.message, _this.props.parsing_result);
+                    }
+                },
+
+                translateStatementState(production_name, production, th) {
+
+                    if (production_name !== production.production_name) {
+
+                        tool.makeErrObj("production name not matched", production);
+                    }
+
+                    let res = PARSING_PROCESS.FAILURE;
+                    if (1 === th || (1 < th && "select_statement" === production_name)) {
+
+                        res = PARSING_PROCESS.SUCCESS;
+                    }
+
+                    return res;
+                },
+
+                // 找到Statement产生式
+                translateClauseState(production_name, production, statement_th, meta) {
+
+                    let i = 1;
+                    while (i <= statement_th) {
+
+                        if (statement_th === i) {
+
+                            break;
+                        }
+
+                        // 如果statement_th>1, 则一定是子查询
+                        ++i;
+                        production = production.construct[0][1].link.construct[1][0].link.construct[0][1].link;
+                    }
+
+                    let res = PARSING_PROCESS.FAILURE;
+                    let items = production.construct[0];
+                    for (i = items.length - 1; i >= 0; --i) {
+
+                        let item = items[i];
+                        if (item.lock) {
+                            break;
+                        }
+                        if (item.reference_name === meta.token.value + "_clause") {
+
+                            item.lock = 1;
+                            res = PARSING_PROCESS.SUCCESS;
+                            break;
+                        } else if (item.must) {
+                            break;
+                        }
+                    }
+
+                    return res;
+                },
+            },
+
+            // 核心过程
+            procedure: {
+
+                /**
+                 * 解析永远解析的是 token , 非终结符的 link 只是引导我们走向下一个节点 ！
+                 * @param production_name
+                 * @param production
+                 * @param meta
+                 * @returns {production|boolean}
+                 */
+                exploreMazeBFS(production_name, production, meta) {
+
+                    let _this = translator;
+                    if (!production || !production.construct || !Array.isArray(production.construct)) {
+
+                        return false;
+                    }
+                    if (0 > ["word"].indexOf(meta.state) && production_name !== production.production_name) {
+
+                        tool.makeErrObj("production name not matched", production);
+                    }
+
+                    // 循环产生式的每一个规则
+                    let res = PARSING_PROCESS.FAILURE;
+                    for (let rule_index in production.construct) {
+
+                        if (!production.construct.hasOwnProperty(rule_index)) {
+                            continue;
+                        }
+
+                        // 定义items相关数据
+                        let items = production.construct[rule_index];
+                        let items_length = items.length;
+                        let items_require = _this.fetchRequire(production, rule_index);
+
+                        // 训练require, 自动获取所有的数据, 为循环items服务
+                        let start, end,
+                            train_info = _this.trainRequire(rule_index, items_require, items, production.strategy);
+                        start = train_info.start;
+                        end = train_info.end;
+
+                        // 循环此规则下的items
+                        for (let j = start; j <= end; ++j) {
+
+                            let item = items[j], item_parsing_res = this.itemParsing(item, meta);
+                            if (item_parsing_res) {
+
+                                res = PARSING_PROCESS.SUCCESS;
+                                if (_this.isTerminator(item) && items_require.item_recursive) {
+                                    production.strategy[rule_index].push(j);
+                                }
+                            } else {
+
+                                // 解析阶段错误
+                                _this.props.parsing_result = {
+                                    process: PARSING_PROCESS.FAILURE,
+                                    errno: -1,
+                                    message: meta.token.value + " not matched",
+                                };
+                            }
+                        }
+                    }
+
+                    return (PARSING_PROCESS.SUCCESS === res) ? production : false;
+                },
+
+                // 初始构建maze
+                buildMaze(meta) {
+
+                    let _this = translator;
+                    let structure = _this.getStatementGrammarStructure(meta);
+                    let production_name = meta.token.value + "_" + meta.state;
+                    _this.props.maze = tool.pureValueAssign(structure);
+                    return _this.spreadProduction(production_name, _this.props.maze, 0);
+                },
+
+                // 追加构建maze
+                buildMazeAppended(meta, production) {
+
+                    if (!production || !production.construct || !Array.isArray(production.construct)) {
+                        return production;
+                    }
+
+                    let _this = translator;
+                    production.construct.map((rule) => {
+
+                        rule = rule.map((item) => {
+
+                            let production_name = item.reference_name;
+                            if (_this.isLeadToNextMazeProduction(production_name)) {
+
+                                item.link = this.buildMazeAppended(meta, item.link);
+                            } else if (_this.isLinkNextMazeProduction(production_name)) {
+
+                                if (item.link) {
+
+                                    // 继续往下走
+                                    item.link = this.buildMazeAppended(meta, item.link);
+                                } else {
+
+                                    // 追加
+                                    item.link = _this.spreadProduction(production_name, _this.getStatementGrammarStructure(meta), production.deep + 1);
+                                }
+                            }
+
+                            return item;
+                        });
+
+                        return rule;
+                    });
+
+                    return production;
+                },
+            },
+        },
+
+        // 获取默认约束
+        getDefaultRequire() {
+
+            return {
+
+                "item_count": 0,
+                "item_recursive": "",
+            };
+        },
+
+        // 获取默认选项
+        getDefaultOption() {
+
+            return {
+                "must": false
+            };
+        },
+
+        // 获取statement语法结构
+        getStatementGrammarStructure(meta) {
+
+            let statement = meta.token.value + "_statement";
+            let language = globalVariableContainer.config.grammar.language;
+
+            return grammar[language]["statement"][statement];
+        },
+
+        // 是否是终结符
+        isTerminator(item) {
+
+            return typeof (item && item.reference && item.reference_name) === "undefined";
+        },
+
+        // 是否是select查询产生式
+        isSelectStatementProduction(production_name) {
+            return "select_statement" === production_name;
+        },
+
+        // 是否是from子句产生式
+        isFromClauseProduction(production_name) {
+            return "from_clause" === production_name;
+        },
+
+        // 是否是子查询产生式
+        isSubqueryExpr(production_name) {
+            return "subquery_expr" === production_name;
+        },
+
+        // 是否为通往下一个maze的道路/产生式
+        isLeadToNextMazeProduction(production_name) {
+
+            if (this.isFromClauseProduction(production_name)) {
+                return true;
             }
 
-            return rule;
-        }
+            if (this.isSubqueryExpr(production_name)) {
+                return true;
+            }
+
+            return false;
+        },
+
+        // 是否为连接下一个maze的道路节点处/产生式
+        isLinkNextMazeProduction(production_name) {
+
+            return this.isSelectStatementProduction(production_name);
+        },
+
+        // require 是否存在子规则
+        isRequireHasSubRule(production) {
+
+            return ("undefined" === typeof production.require.rule_1) ? 0 : 1;
+        },
+
+        // 获取约束
+        fetchRequire(production, rule_index = 0) {
+
+            if (!this.isRequireHasSubRule(production)) {
+
+                return production.require;
+            }
+
+            if (production.require["rule_" + rule_index]) {
+
+                return production.require["rule_" + rule_index];
+            }
+
+            throw this.makeErrObj("rule_index error for production", {"production": production});
+        },
+
+        // 为产生式生成约束
+        createRequire(production_name, production) {
+
+            if (this.isRequireHasSubRule(production)) {
+
+                let count = production.construct.length;
+                for (let i = 0; i <= count - 1; ++i) {
+
+                    let rule_i = "rule_" + i;
+                    if (production.require.hasOwnProperty(rule_i)) {
+
+                        production.require[rule_i] = Object.assign(this.getDefaultRequire(), production.require[rule_i]);
+                    } else {
+
+                        throw tool.makeErrObj(production_name + " require has no " + rule_i);
+                    }
+                }
+            } else if (production.require) {
+
+                production.require = Object.assign(this.getDefaultRequire(), production.require);
+            }
+
+            return production.require;
+        },
+
+        // 推导出新的产生式
+        inferProduction(reference, reference_name) {
+
+            // 使用 Object.assign 也不能完全值引用, 所以使用 JSON
+            let temp_grammar = JSON.parse(JSON.stringify(grammar));
+            return temp_grammar.closure[reference][reference_name];
+        },
+
+        // 根据产生式名展开产生式 (产生式:production)
+        spreadProduction(production_name, production, deep) {
+
+            // 终止点
+            if (!production || !production.construct || !Array.isArray(production.construct)) {
+                return production;
+            }
+
+            // 循环产生式的每一个规则
+            production.construct = production.construct.map((rule) => {
+
+                // 循环规则内的每一项单元
+                rule = rule.map((item) => {
+
+                    // 如果是非终结符且不是 select_statement production 则继续展开
+                    if (!this.isTerminator(item) && !this.isSelectStatementProduction(item.reference_name)) {
+
+                        // 根据 reference, reference_name 来推出产生式
+                        let infer_production = this.inferProduction(item.reference, item.reference_name);
+                        infer_production = this.spreadProduction(item.reference_name, infer_production, deep + 1);
+
+                        return {
+                            ...Object.assign(this.getDefaultOption(), item),
+                            link: infer_production,
+                        };
+                    }
+
+                    return item;
+                });
+
+                return rule;
+            });
+
+            production.deep = deep;
+            production.lock = false;
+            production.production_name = production_name;
+            production.strategy = tool.newNArray(production.construct.length);
+            production.require = this.createRequire(production_name, production);
+
+            return production;
+        },
+
+        /**
+         * 解析终结符
+         * @param item
+         * @param meta
+         * @returns {boolean}
+         */
+        itemParsing(item, meta) {
+
+            let item_parsing_res;
+            if (this.isTerminator(item)) {
+
+                // 终结符的匹配结果
+                item_parsing_res = (meta.token.type === item.type && meta.token.value === item.value);
+            } else {
+
+                // 非终结符的匹配结果
+                item_parsing_res = this.exploreMazeBFS(item.link.production_name, item.link, meta);
+                if (item_parsing_res) {
+                    item_parsing_res = true;
+                }
+            }
+
+            return item_parsing_res;
+        },
+
+        // 训练产生式约束
+        trainRequire(rule_index, require, items, strategy) {
+
+            let items_length = items.length;
+            let start = 0, end = items_length - 1;
+            if (!require.item_recursive) {
+
+                let last_item_index = strategy[rule_index].last(1);
+                if (!last_item_index) {
+                    start = 0;
+                } else {
+                    end = start = last_item_index + 1;
+                }
+            }
+
+            return {
+
+                "start": start,
+                "end": end,
+            };
+        },
     };
 
     // AST构建器
@@ -640,17 +1138,17 @@
                 flowtoWordState(token) {
 
                     let word = token.value;
-                    if (parser.props.wordTable.sequence.keyword.statement.indexOf(word) > -1) {
+                    if (builder.props.wordTable.sequence.keyword.statement.indexOf(word) > -1) {
 
-                        parser.fsm.state = FSM.PARSER.STATES.STATEMENT;
+                        builder.fsm.state = FSM.PARSER.STATES.STATEMENT;
                         return;
-                    } else if (parser.props.wordTable.sequence.keyword.clause.indexOf(word) > -1) {
+                    } else if (builder.props.wordTable.sequence.keyword.clause.indexOf(word) > -1) {
 
-                        parser.fsm.state = FSM.PARSER.STATES.CLAUSE;
+                        builder.fsm.state = FSM.PARSER.STATES.CLAUSE;
                         return;
                     }
 
-                    let root = parser.props.ast;
+                    let root = builder.props.ast;
                     let statement_node = root.next[root.next_index];
                     if (statement_node.next_index >= statement_node.next.length) {
 
@@ -684,15 +1182,15 @@
                     }));
                     expr_node.next_index = expr_node.next.length - 1;
 
-                    translator.init("expr", token);
+                    translator.core.step.translate("word", token);
 
-                    parser.fsm.state = FSM.PARSER.STATES.HANDLE;
+                    builder.fsm.state = FSM.PARSER.STATES.HANDLE;
                 },
 
                 // 转向expr状态
                 flowtoExprState(token) {
 
-                    let root = parser.props.ast;
+                    let root = builder.props.ast;
                     let statement_node = root.next[root.next_index];
                     let clause_node = statement_node.next[statement_node.next_index];
 
@@ -702,15 +1200,15 @@
                     }));
                     clause_node.next_index = clause_node.next.length - 1;
 
-                    translator.init("expr", token);
+                    translator.core.step.translate("expr", token);
 
-                    parser.fsm.state = FSM.PARSER.STATES.HANDLE;
+                    builder.fsm.state = FSM.PARSER.STATES.HANDLE;
                 },
 
                 // 转向clause状态
                 flowtoClauseState(token) {
 
-                    let root = parser.props.ast;
+                    let root = builder.props.ast;
                     let statement_node = root.next[root.next_index];
                     statement_node.next.push(tool.generateASTNode("clause", token, {
                         "state": "clause",
@@ -718,24 +1216,24 @@
                     }));
                     statement_node.next_index = statement_node.next.length - 1;
 
-                    translator.init("clause", token);
+                    translator.core.step.translate("clause", token);
 
-                    parser.fsm.state = FSM.PARSER.STATES.HANDLE;
+                    builder.fsm.state = FSM.PARSER.STATES.HANDLE;
                 },
 
                 // 转向STATEMENT状态
                 flowtoStatementState(token) {
 
-                    let root = parser.props.ast;
+                    let root = builder.props.ast;
                     root.next.push(tool.generateASTNode("statement", token, {
                         "state": "statement",
                         "next_state": "handle",
                     }));
                     root.next_index = root.next.length - 1;
 
-                    translator.init("statement", token);
+                    translator.core.step.translate("statement", token);
 
-                    parser.fsm.state = FSM.PARSER.STATES.HANDLE;
+                    builder.fsm.state = FSM.PARSER.STATES.HANDLE;
                 }
             },
         },
@@ -748,6 +1246,8 @@
         },
 
         before() {
+
+            this.props.tokens = scanner.props.tokens;
 
             // 清理
             this.props.nesting_queries = [];
@@ -803,6 +1303,9 @@
                         case FSM.PARSER.STATES.EXPR:
                             this.fsm.events.flowtoExprState(token);
                             break;
+                        case FSM.PARSER.STATES.WORD:
+                            this.fsm.events.flowtoWordState(token);
+                            break;
                         default:
                             break;
                     }
@@ -824,8 +1327,77 @@
         },
     };
 
-    // 前端过程步骤
-    let steps = {
+    // 前端过程控制器
+    let controller = {
+
+        registers: {
+
+            // 注册AOP
+            registerAOP() {
+
+                Function.prototype.before = function (func) {
+
+                    let _self = this;
+                    return function () {
+
+                        if (false === func.apply(this, arguments)) {
+                            return false;
+                        }
+                        return _self.apply(this, arguments);
+                    };
+                };
+
+                Function.prototype.after = function (func) {
+
+                    let _self = this;
+                    return function () {
+
+                        let ret = _self.apply(this, arguments);
+                        if (false === ret) {
+                            return false;
+                        }
+                        func.apply(this, arguments);
+                        return ret;
+                    };
+                };
+            },
+
+            // 注册扩展
+            registerExtension() {
+
+                Array.prototype.last = function (index) {
+
+                    let start = (this.length - 1) - index + 1;
+                    for (let i = start; i <= this.length - 1; ++i) {
+                        if (index === i) {
+                            return this[i];
+                        }
+                    }
+
+                    // throw tool.makeErrObj("index overflow", {"index": index, "array": this});
+                    return false;
+                }
+            },
+        },
+
+        init() {
+
+            this.before();
+            this.start();
+        },
+
+        before() {
+
+            this.registers.registerAOP();
+            this.registers.registerExtension();
+        },
+
+        start() {
+
+            this.lexicalAnalysis.work();
+            this.syntacticAnalysis.work();
+            this.semanticAnalysis.work();
+        },
 
         // 词法分析
         lexicalAnalysis: {
@@ -842,7 +1414,6 @@
             work() {
 
                 builder.init();
-                translator.init();
             }
         },
 
@@ -863,21 +1434,31 @@
             debug: true,
             log_n: 1, // 打印日志序号从n开始
             parsing_enable: true, // 是否启用语法解析
+            ast: {
+
+                props: {
+
+                    disabled: ["state", "next_state"],
+                },
+            },
+            grammar: {
+
+                // 配置使用的语法类型
+                language: "mysql",
+            }
         }, config);
     };
     SQLCompiler.prototype = {
 
         tool: tool,
         scanner: scanner,
-        parser: parser,
-        steps: steps,
+        translator: translator,
+        builder: builder,
+        controller: controller,
 
         boot() {
 
-            this.steps.before.work();
-            this.steps.lexicalAnalysis.work();
-            this.steps.syntacticAnalysis.work();
-            this.steps.semanticAnalysis.work();
+            this.controller.init();
         },
     };
 
@@ -890,7 +1471,16 @@
 
                 tool: tool,
                 scanner: scanner,
-                parser: parser,
+                translator: translator,
+                builder: builder,
+                controller: controller,
+            },
+
+            test() {
+
+                let language = "mysql";
+                let production = translator.spreadProduction(grammar[language].statement.select_statement);
+                return production;
             },
 
             format() {
@@ -904,7 +1494,7 @@
                 let indent_str = ""; // 缩进字符
                 let enter_str = ""; // 换行字符
 
-                let nesting_queries = parser.props.nesting_queries;
+                let nesting_queries = builder.props.nesting_queries;
 
                 function reset() {
 
@@ -1018,7 +1608,7 @@
                     }
                 }
 
-                traverseObj(parser.props.ast);
+                traverseObj(builder.props.ast);
 
                 let res = {
                     sql: sql,
@@ -1037,7 +1627,6 @@
 
             return $(this).each(function () {
 
-                console.clear();
                 (new SQLCompiler(config)).boot();
             });
         },

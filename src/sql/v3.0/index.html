@@ -115,11 +115,13 @@
 
 <body>
 
-<h2>SQL解析 V3.0</h2>
+<!--<h2>SQL解析 V3.0</h2>-->
 
 <p id="SQL_Review"></p>
 
-<textarea id="SQL_Input">select * from A where id>100</textarea>
+<!--<textarea id="SQL_Input">select * from A where id>100</textarea>-->
+
+<textarea id="SQL_Input">select * from ( select * from test )</textarea>
 
 <button id="Go">Go</button>
 
@@ -177,7 +179,8 @@
 
             sql_review_obj.SQLCompiler(Object.assign({sql: sql}, config));
 
-            let result = sql_review_obj.SQLCompilerAPI.closure.parser.props.ast;
+            //let result = sql_review_obj.SQLCompilerAPI.closure.builder.props.ast;
+            let result = sql_review_obj.SQLCompilerAPI.closure.translator.props.maze;
             let input = eval('(' + JSON.stringify(result) + ')');
 
             formatSQL();
@@ -196,12 +199,13 @@
     $(document).on("click", "#Go", function () {
 
         let input = checkSyntax({"debug": false});
-
+        // let input = sql_review_obj.SQLCompilerAPI.test();
         if (input) {
 
             all_collapsed = false;
             json_renderer_obj.fadeIn();
             json_renderer_obj.jsonViewer(input, {collapsed: all_collapsed, withQuotes: false});
+            console.log(json_renderer_obj.SQLCompilerAPI.closure.translator.props);
         }
     });
     $(document).on("click", "#Debug", function () {
@@ -215,11 +219,14 @@
             json_renderer_obj.jsonViewer(input, {collapsed: all_collapsed, withQuotes: false});
         }
     });
+    $(document).on("click", "#Testing", function () {
 
+    });
 
     $(document).on("click", "#Collapse-all", function () {
 
         let input = checkSyntax();
+        //let input = sql_review_obj.SQLCompilerAPI.test();
 
         if (input) {
 

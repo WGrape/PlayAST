@@ -32,6 +32,7 @@
 - [扯淡：大白话聊聊编译那点事儿](https://awhisper.github.io/2017/02/26/%E6%89%AF%E6%B7%A1%EF%BC%9A%E5%A4%A7%E7%99%BD%E8%AF%9D%E8%81%8A%E8%81%8A%E7%BC%96%E8%AF%91%E9%82%A3%E7%82%B9%E4%BA%8B%E5%84%BF/)
 - [详解 Golang 中间代码生成](https://juejin.im/entry/5c661707f265da2d8e70d041)
 - [Compiler Theory(编译原理)、词法/语法/AST/中间代码优化在Webshell检测上的应用](https://www.cnblogs.com/LittleHann/p/4754446.html)
+- [Infer 工作原理](https://www.google.com/search?q=Infer+%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86)
 
 
 
