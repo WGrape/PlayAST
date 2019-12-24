@@ -208,22 +208,19 @@
         function_param_word: {
 
             // 构成方式
-            "construct":
-                [
+            "construct": [
+                // 第1种构成
+                [{"reference": "word", "reference_name": "source_column_word"}],
 
-                    // 第1种构成
-                    [
-                        {"reference": "word", "reference_name": "source_column_word"},
-                        {"type": "Number"},
-                        {"type": "String"},
-                    ],
-                ],
+                // 第2种构成
+                [{"type": "Number"}],
+
+                // 第3种构成
+                [{"type": "String"}],
+            ],
 
             // 构成要求
             "require": {
-
-                // 不限制组成项的个数
-                "item_count": [Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY],
 
                 // 每一项之间的递归
                 "item_recursive": "word.comma_recursive_word",
@@ -289,12 +286,8 @@
             "require": {},
         },
 
-    };
 
-    // clause 产生式
-    let clause = {
-
-        select_clause: {
+        select_expr: {
 
             // 构成方式
             "construct": [
@@ -323,11 +316,30 @@
             // 要求
             "require": {
 
-                "item_count": [1, Number.POSITIVE_INFINITY],
+                "item_count": "GE 1",
 
                 // 每一项之间的递归
                 "item_recursive": "word.comma_recursive_word",
             },
+        },
+    };
+
+    // clause 产生式
+    let clause = {
+
+        select_clause: {
+
+            // 构成方式
+            "construct": [
+
+                // 仅这1种组成
+                [
+                    {
+                        "reference": "expr",
+                        "reference_name": "select_expr",
+                    },
+                ],
+            ],
         },
 
         from_clause: {
@@ -353,11 +365,11 @@
             "require": {
 
                 "rule_0": {
-                    "item_count": [1, Number.POSITIVE_INFINITY],
+                    "item_count": "GE 1",
                 },
 
                 "rule_1": {
-                    "item_count": [1, Number.POSITIVE_INFINITY],
+                    "item_count": "GE 1",
                 },
             },
         },
@@ -393,34 +405,29 @@
                     {
                         "reference": "clause",
                         "reference_name": "where_clause",
-                        "must": false,
                     },
                     {
                         "reference": "clause",
                         "reference_name": "group_clause",
-                        "must": false,
                     },
                     {
                         "reference": "clause",
                         "reference_name": "having_clause",
-                        "must": false,
                     },
                     {
                         "reference": "clause",
                         "reference_name": "orderby_clause",
-                        "must": false,
                     },
                     {
                         "reference": "clause",
                         "reference_name": "limit_clause",
-                        "must": false,
                     },
                 ]
             ],
 
             // 要求
             "require": {
-                "item_count": [2, Number.POSITIVE_INFINITY]
+                "item_count": "GE 2"
             },
         },
 

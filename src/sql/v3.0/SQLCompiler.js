@@ -265,6 +265,16 @@
             return tool.isSubqueryStartToken(image_token);
         },
 
+        /**
+         * 当前token是否是整个SQL结束的终止标志
+         * @param token
+         * @returns {boolean}
+         */
+        isSQLEndToken(token) {
+
+            return ("Punctuator" === token.type && ";" === token.value);
+        },
+
         pruningASTNode(ast_node) {
 
             let disabled_props = globalVariableContainer.config.ast.props.disabled;
@@ -304,15 +314,33 @@
                 ast_node.value = token.value;
             }
 
-            if (!tool.isUndefined(extra.expression)) {
-                ast_node.expression = extra.expression;
-            }
-
-            if ("{}" !== JSON.stringify(token)) {
+            if (!this.isEmptyObject(token)) {
                 ast_node.token = token;
             }
 
+            if (!tool.isUndefined(extra.clause)) {
+                ast_node.clause = extra.clause;
+            }
+
+            if (!tool.isUndefined(extra.expr)) {
+                ast_node.expr = extra.expr;
+            }
+
             return this.pruningASTNode(ast_node);
+        },
+
+        // 取出第一个有意义有定义的数字
+        firstDefinedValue(arr) {
+
+            for (let item of arr) {
+
+                if (item) {
+
+                    return item;
+                }
+            }
+
+            return "";
         },
 
         isUndefined(obj) {
@@ -365,10 +393,10 @@
         },
 
         // 表达式中是否含有函数
-        isExistFunctionInExpression(expression) {
+        isExistFunctionInExpression(expr) {
 
             let reg = new RegExp(/^[a-zA-Z0-9-_]+\(.*\)$/);
-            return reg.test(expression);
+            return reg.test(expr);
         },
 
         trimStringArray(arr) {
@@ -653,12 +681,20 @@
                     "statement": 0,
                     "statement_meta_queue": [],
                     "clause_meta_queue": [],
+                    "target_expr_production": {},
                 },
 
                 // 堆栈寄存器
                 sp: {
 
                     "statement": 0,
+                },
+
+                // 程序状态字
+                psw: {
+
+                    "sql_end_f": 0, // SQL结束标志寄存器
+                    "statement_end_f": [], // 语句结束标志寄存器(多语句的情况:子查询联合查询等), 因为存在多个语句, 所以数组记录每个语句的结束情况
                 },
             },
         },
@@ -704,20 +740,36 @@
                         case "clause":
 
                             let statement_th = _this.props.registers.sp.statement;
-
-                            ++_this.props.registers.ax.statement;
-                            _this.props.registers.ax.clause_meta_queue[statement_th].push(meta);
+                            let clause_meta_queue = tool.pureValueAssign(_this.props.registers.ax.clause_meta_queue);
+                            if (!clause_meta_queue[statement_th - 1]) {
+                                clause_meta_queue[statement_th - 1] = [];
+                            }
+                            clause_meta_queue[statement_th - 1].push(meta);
+                            _this.props.registers.ax.clause_meta_queue = clause_meta_queue;
 
                             res = this.translateClauseState(production_name, _this.props.maze, statement_th, meta);
+                            break;
+
+                        case "expr":
+
+                            res = this.translateExprState(statement_th, token.value + "_expr");
                             break;
 
                         case "word":
                         default:
 
+                            console.log(state, token);
+                            return;
+
                             // 如果当前token是子查询的终止token
                             if (tool.isSubqueryEndToken(token)) {
 
                                 --_this.props.registers.sp.statement;
+                            }
+
+                            if (tool.isSQLEndToken(token)) {
+
+                                _this.props.registers.psw.sql_end_f = 1;
                             }
 
                             res = _this.core.procedure.exploreMazeBFS(production_name, _this.props.maze, meta);
@@ -748,7 +800,6 @@
                     return res;
                 },
 
-                // 找到Statement产生式
                 translateClauseState(production_name, production, statement_th, meta) {
 
                     let i = 1;
@@ -766,15 +817,15 @@
 
                     let res = PARSING_PROCESS.FAILURE;
                     let items = production.construct[0];
-                    for (i = items.length - 1; i >= 0; --i) {
+                    for (i = 0; i <= items.length - 1; ++i) {
 
                         let item = items[i];
                         if (item.lock) {
-                            break;
+                            continue;
                         }
                         if (item.reference_name === meta.token.value + "_clause") {
 
-                            item.lock = 1;
+                            item.lock = true;
                             res = PARSING_PROCESS.SUCCESS;
                             break;
                         } else if (item.must) {
@@ -783,6 +834,24 @@
                     }
 
                     return res;
+                },
+
+                translateExprState(statement_th, expr_name) {
+
+                    let _this = translator;
+
+                    let res = PARSING_PROCESS.FAILURE;
+
+                    // 掐头去尾得到目标production
+                    let production;
+                    _this.props.registers.ax.target_expr_production = production = _this.findTargetExprProduction(statement_th, expr_name);
+
+                    res = PARSING_PROCESS.SUCCESS;
+                    return res;
+                },
+
+                translateWordState() {
+
                 },
             },
 
@@ -907,8 +976,9 @@
 
             return {
 
-                "item_count": 0,
-                "item_recursive": "",
+                // 不再使用返回默认字段这种方式, 必须手动配置, 不配置则作为无效处理
+                // "item_count": 0,
+                // "item_recursive": "",
             };
         },
 
@@ -916,7 +986,8 @@
         getDefaultOption() {
 
             return {
-                "must": false
+
+                // "must": false, 因为clause是引导子句, clause存在expr存在, expr存在则word存在, 则所以只有 clause 才需要有 must 选项, must选项也仅对clause起作用
             };
         },
 
@@ -973,7 +1044,11 @@
         // require 是否存在子规则
         isRequireHasSubRule(production) {
 
-            return ("undefined" === typeof production.require.rule_1) ? 0 : 1;
+            return (!production.require || !production.require.rule_1) ? 0 : 1;
+        },
+
+        findTargetExprProduction(statement_th, expr_name) {
+
         },
 
         // 获取约束
@@ -990,6 +1065,26 @@
             }
 
             throw this.makeErrObj("rule_index error for production", {"production": production});
+        },
+
+        pruningProduction(production_name, production, extra) {
+
+            let deep = extra.deep;
+            let state = production_name.split("_")[1];
+            let disabled_props = globalVariableContainer.config.ast.props.disabled;
+
+            if (-1 < disabled_props.indexOf("deep")) {
+                production.deep = deep;
+            }
+
+            if ("clause" === state) {
+                production.lock = false;
+            }
+
+            production.production_name = production_name;
+            production.strategy = tool.newNArray(production.construct.length);
+
+            return production;
         },
 
         // 为产生式生成约束
@@ -1058,10 +1153,7 @@
                 return rule;
             });
 
-            production.deep = deep;
-            production.lock = false;
-            production.production_name = production_name;
-            production.strategy = tool.newNArray(production.construct.length);
+            production = this.pruningProduction(production_name, production, {"deep": deep});
             production.require = this.createRequire(production_name, production);
 
             return production;
@@ -1155,23 +1247,24 @@
                         statement_node.next.push(tool.generateASTNode("clause", {}, {
                             "state": "clause",
                             "next_state": "word",
+                            "clause": statement_node.value, // 不存在token, 则用clause作为标识字段
                         }));
+
+                        let last_node_token = statement_node.token;
+                        translator.core.step.translate("clause", last_node_token);
                     }
 
                     let clause_node = statement_node.next[statement_node.next_index];
                     if (clause_node.next_index >= clause_node.next.length) {
 
-                        let expression = "";
-                        if (!tool.isUndefined(clause_node.value)) {
-                            expression = clause_node.value;
-                        } else if (!tool.isUndefined(statement_node.value)) {
-                            expression = statement_node.value;
-                        }
                         clause_node.next.push(tool.generateASTNode("expr", {}, {
                             "state": "expr",
                             "next_state": "word",
-                            "expression": expression,
+                            "expr": tool.firstDefinedValue([clause_node.value, clause_node.clause, statement_node.value]), // 不存在token, 则用expr作为标识字段
                         }));
+
+                        let last_node_token = tool.firstDefinedValue([clause_node.token, statement_node.token]);
+                        translator.core.step.translate("expr", last_node_token);
                     }
                     clause_node.next_index = clause_node.next.length - 1;
 
@@ -1441,11 +1534,18 @@
                     disabled: ["state", "next_state"],
                 },
             },
+            production: {
+
+                props: {
+
+                    disabled: ["deep"],
+                },
+            },
             grammar: {
 
                 // 配置使用的语法类型
                 language: "mysql",
-            }
+            },
         }, config);
     };
     SQLCompiler.prototype = {
@@ -1628,6 +1728,7 @@
             return $(this).each(function () {
 
                 (new SQLCompiler(config)).boot();
+                console.log(builder.props.ast);
             });
         },
     });
