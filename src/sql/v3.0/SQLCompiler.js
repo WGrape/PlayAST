@@ -684,10 +684,11 @@
                     "target_expr_production": {},
                 },
 
-                // 堆栈寄存器
+                // 堆栈指针寄存器
                 sp: {
 
                     "statement": 0,
+                    "clause_name": "",
                 },
 
                 // 程序状态字
@@ -724,7 +725,7 @@
                     }
 
                     // 根据当前的状态解析
-                    let res = PARSING_PROCESS.FAILURE;
+                    let res = PARSING_PROCESS.FAILURE, statement_th, clause_meta_queue;
                     switch (state) {
 
                         case "statement":
@@ -739,27 +740,27 @@
 
                         case "clause":
 
-                            let statement_th = _this.props.registers.sp.statement;
-                            let clause_meta_queue = tool.pureValueAssign(_this.props.registers.ax.clause_meta_queue);
+                            statement_th = _this.props.registers.sp.statement;
+                            clause_meta_queue = tool.pureValueAssign(_this.props.registers.ax.clause_meta_queue);
                             if (!clause_meta_queue[statement_th - 1]) {
                                 clause_meta_queue[statement_th - 1] = [];
                             }
                             clause_meta_queue[statement_th - 1].push(meta);
                             _this.props.registers.ax.clause_meta_queue = clause_meta_queue;
+                            _this.props.registers.sp.clause_name = token.value + "_clause";
 
                             res = this.translateClauseState(production_name, _this.props.maze, statement_th, meta);
                             break;
 
                         case "expr":
 
-                            res = this.translateExprState(statement_th, token.value + "_expr");
+                            statement_th = _this.props.registers.sp.statement;
+                            let expr_name = token.value + "_expr", clause_name = _this.props.registers.sp.clause_name;
+                            res = this.translateExprState(statement_th, clause_name, expr_name);
                             break;
 
                         case "word":
                         default:
-
-                            console.log(state, token);
-                            return;
 
                             // 如果当前token是子查询的终止token
                             if (tool.isSubqueryEndToken(token)) {
@@ -772,7 +773,8 @@
                                 _this.props.registers.psw.sql_end_f = 1;
                             }
 
-                            res = _this.core.procedure.exploreMazeBFS(production_name, _this.props.maze, meta);
+                            let production = _this.props.registers.ax.target_expr_production;
+                            res = this.translateWordState(production_name, production, meta);
                             break;
                     }
 
@@ -803,17 +805,7 @@
                 translateClauseState(production_name, production, statement_th, meta) {
 
                     let i = 1;
-                    while (i <= statement_th) {
-
-                        if (statement_th === i) {
-
-                            break;
-                        }
-
-                        // 如果statement_th>1, 则一定是子查询
-                        ++i;
-                        production = production.construct[0][1].link.construct[1][0].link.construct[0][1].link;
-                    }
+                    production = translator.findNStatementProduction(production, statement_th);
 
                     let res = PARSING_PROCESS.FAILURE;
                     let items = production.construct[0];
@@ -836,22 +828,29 @@
                     return res;
                 },
 
-                translateExprState(statement_th, expr_name) {
+                translateExprState(statement_th, clause_name, expr_name) {
 
                     let _this = translator;
 
                     let res = PARSING_PROCESS.FAILURE;
 
-                    // 掐头去尾得到目标production
-                    let production;
-                    _this.props.registers.ax.target_expr_production = production = _this.findTargetExprProduction(statement_th, expr_name);
+                    // 掐头去尾得到目标production, 后续的translateWord操作会使用这里生成的target_expr_production
+                    let production = _this.props.maze;
+                    _this.props.registers.ax.target_expr_production = _this.findTargetExprProduction(production, statement_th, clause_name, expr_name);
 
                     res = PARSING_PROCESS.SUCCESS;
                     return res;
                 },
 
-                translateWordState() {
+                translateWordState(production_name, production, meta) {
 
+                    let _this = translator, token = meta.token;
+                    let res = PARSING_PROCESS.FAILURE;
+
+                    res = _this.core.procedure.exploreMazeBFS(production_name, production, meta);
+
+                    res = PARSING_PROCESS.SUCCESS;
+                    return res;
                 },
             },
 
@@ -1047,10 +1046,6 @@
             return (!production.require || !production.require.rule_1) ? 0 : 1;
         },
 
-        findTargetExprProduction(statement_th, expr_name) {
-
-        },
-
         // 获取约束
         fetchRequire(production, rule_index = 0) {
 
@@ -1065,6 +1060,39 @@
             }
 
             throw this.makeErrObj("rule_index error for production", {"production": production});
+        },
+
+        findNStatementProduction(production, statement_th) {
+
+            let i = 1;
+            while (i <= statement_th) {
+
+                if (statement_th === i) {
+
+                    break;
+                }
+
+                // 如果statement_th>1, 则一定是子查询
+                ++i;
+                production = production.construct[0][1].link.construct[1][0].link.construct[0][1].link;
+            }
+
+            return production;
+        },
+
+        findTargetExprProduction(production, statement_th, clause_name, expr_name) {
+
+            production = this.findNStatementProduction(production, statement_th);
+            for (let rule of production.construct) {
+
+                for (let item of rule) {
+
+                    if (clause_name === item.reference_name) {
+
+                        return item.link.construct[0].link;
+                    }
+                }
+            }
         },
 
         pruningProduction(production_name, production, extra) {
