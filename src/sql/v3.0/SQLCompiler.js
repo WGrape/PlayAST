@@ -689,6 +689,7 @@
 
                     "statement": 0,
                     "clause_name": "",
+                    "expr_name": "",
                 },
 
                 // 程序状态字
@@ -725,7 +726,7 @@
                     }
 
                     // 根据当前的状态解析
-                    let res = PARSING_PROCESS.FAILURE, statement_th, clause_meta_queue;
+                    let res = PARSING_PROCESS.FAILURE, statement_th, clause_meta_queue, clause_name, expr_name;
                     switch (state) {
 
                         case "statement":
@@ -747,15 +748,18 @@
                             }
                             clause_meta_queue[statement_th - 1].push(meta);
                             _this.props.registers.ax.clause_meta_queue = clause_meta_queue;
-                            _this.props.registers.sp.clause_name = token.value + "_clause";
+                            _this.props.registers.sp.clause_name = production_name;
 
-                            res = this.translateClauseState(production_name, _this.props.maze, statement_th, meta);
+                            res = this.translateClauseState(production_name, _this.props.maze, statement_th);
                             break;
 
                         case "expr":
 
                             statement_th = _this.props.registers.sp.statement;
-                            let expr_name = token.value + "_expr", clause_name = _this.props.registers.sp.clause_name;
+                            clause_name = _this.props.registers.sp.clause_name;
+                            expr_name = production_name;
+                            _this.props.registers.sp.expr_name = expr_name;
+
                             res = this.translateExprState(statement_th, clause_name, expr_name);
                             break;
 
@@ -774,7 +778,8 @@
                             }
 
                             let production = _this.props.registers.ax.target_expr_production;
-                            res = this.translateWordState(production_name, production, meta);
+                            expr_name = _this.props.registers.sp.expr_name;
+                            res = this.translateWordState(expr_name, production, meta);
                             break;
                     }
 
@@ -802,7 +807,7 @@
                     return res;
                 },
 
-                translateClauseState(production_name, production, statement_th, meta) {
+                translateClauseState(production_name, production, statement_th) {
 
                     let i = 1;
                     production = translator.findNStatementProduction(production, statement_th);
@@ -815,7 +820,7 @@
                         if (item.lock) {
                             continue;
                         }
-                        if (item.reference_name === meta.token.value + "_clause") {
+                        if (item.reference_name === production_name) {
 
                             item.lock = true;
                             res = PARSING_PROCESS.SUCCESS;
@@ -836,21 +841,20 @@
 
                     // 掐头去尾得到目标production, 后续的translateWord操作会使用这里生成的target_expr_production
                     let production = _this.props.maze;
-                    _this.props.registers.ax.target_expr_production = _this.findTargetExprProduction(production, statement_th, clause_name, expr_name);
+                    let target_production = _this.findTargetExprProduction(production, statement_th, clause_name, expr_name);
+                    if (target_production) {
 
-                    res = PARSING_PROCESS.SUCCESS;
+                        _this.props.registers.ax.target_expr_production = target_production;
+                        res = PARSING_PROCESS.SUCCESS;
+                    }
+
                     return res;
                 },
 
                 translateWordState(production_name, production, meta) {
 
-                    let _this = translator, token = meta.token;
-                    let res = PARSING_PROCESS.FAILURE;
-
-                    res = _this.core.procedure.exploreMazeBFS(production_name, production, meta);
-
-                    res = PARSING_PROCESS.SUCCESS;
-                    return res;
+                    let res = translator.core.procedure.exploreMazeBFS(production_name, production, meta);
+                    return res ? PARSING_PROCESS.SUCCESS : PARSING_PROCESS.FAILURE
                 },
             },
 
@@ -858,7 +862,7 @@
             procedure: {
 
                 /**
-                 * 解析永远解析的是 token , 非终结符的 link 只是引导我们走向下一个节点 ！
+                 * parsingExprWords: 解析永远解析的是 token , 非终结符的 link 只是引导走向下一个节点 ！
                  * @param production_name
                  * @param production
                  * @param meta
@@ -871,9 +875,13 @@
 
                         return false;
                     }
-                    if (0 > ["word"].indexOf(meta.state) && production_name !== production.production_name) {
+                    if (production_name !== production.production_name) {
 
                         tool.makeErrObj("production name not matched", production);
+                    }
+                    if (production_name.indexOf("statement") > -1) {
+
+                        return production;
                     }
 
                     // 循环产生式的每一个规则
@@ -898,7 +906,7 @@
                         // 循环此规则下的items
                         for (let j = start; j <= end; ++j) {
 
-                            let item = items[j], item_parsing_res = this.itemParsing(item, meta);
+                            let item = items[j], item_parsing_res = _this.itemParsing(item, meta);
                             if (item_parsing_res) {
 
                                 res = PARSING_PROCESS.SUCCESS;
@@ -907,11 +915,11 @@
                                 }
                             } else {
 
-                                // 解析阶段错误
+                                // 阶段性解析错误
                                 _this.props.parsing_result = {
                                     process: PARSING_PROCESS.FAILURE,
                                     errno: -1,
-                                    message: meta.token.value + " not matched",
+                                    message: "'" + meta.token.value + "'" + " not matched",
                                 };
                             }
                         }
@@ -1082,6 +1090,7 @@
 
         findTargetExprProduction(production, statement_th, clause_name, expr_name) {
 
+            let target_production = false;
             production = this.findNStatementProduction(production, statement_th);
             for (let rule of production.construct) {
 
@@ -1089,10 +1098,13 @@
 
                     if (clause_name === item.reference_name) {
 
-                        return item.link.construct[0].link;
+                        target_production = item.link.construct[0][0].link;
+                        break;
                     }
                 }
             }
+
+            return target_production;
         },
 
         pruningProduction(production_name, production, extra) {
@@ -1187,6 +1199,16 @@
             return production;
         },
 
+        terminatorMatching(item, meta) {
+
+            if (-1 < ["number", "string"].indexOf(item.type)) {
+
+                return item.type === typeof meta.token.value;
+            }
+
+            return true;
+        },
+
         /**
          * 解析终结符
          * @param item
@@ -1195,15 +1217,21 @@
          */
         itemParsing(item, meta) {
 
-            let item_parsing_res;
+            let item_parsing_res = false;
             if (this.isTerminator(item)) {
 
                 // 终结符的匹配结果
-                item_parsing_res = (meta.token.type === item.type && meta.token.value === item.value);
+                if (item.value) {
+
+                    item_parsing_res = (meta.token.type === item.type && meta.token.value === item.value);
+                } else {
+
+                    item_parsing_res = this.terminatorMatching(item, meta);
+                }
             } else {
 
                 // 非终结符的匹配结果
-                item_parsing_res = this.exploreMazeBFS(item.link.production_name, item.link, meta);
+                item_parsing_res = this.core.procedure.exploreMazeBFS(item.link.production_name, item.link, meta);
                 if (item_parsing_res) {
                     item_parsing_res = true;
                 }
