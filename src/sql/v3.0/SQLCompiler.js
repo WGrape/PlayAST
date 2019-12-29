@@ -490,7 +490,7 @@
 
                     let index = scanner.props.tokens.length;
                     scanner.props.tokens.push({
-                        "type": "Punctuator",
+                        "type": (!isNaN(ch) && " " !== ch) ? "Number" : "Punctuator",
                         "value": ch,
                         "index": index,
                         "seq": scanner.props.seq - ch.length + 1,
@@ -519,7 +519,7 @@
                         "seq": scanner.props.seq - sequence.length + 1,
                     });
                     scanner.fsm.state = FSM.SCANNER.STATES.HANDLE;
-                }
+                },
             }
         },
 
@@ -788,7 +788,7 @@
                     let i = 1;
                     production = translator.findNStatementProduction(production, statement_th);
 
-                    let res = PARSING_PROCESS.FAILURE;
+                    let res = PARSING_PROCESS.FAILURE, message;
                     let items = production.construct[0];
                     for (i = 0; i <= items.length - 1; ++i) {
 
@@ -802,8 +802,20 @@
                             res = PARSING_PROCESS.SUCCESS;
                             break;
                         } else if (item.must) {
+
+                            message = "'" + production_name + "' must exit";
                             break;
+                        } else {
+
+                            message = "'" + production_name + "' not matched";
                         }
+
+                        translator.props.parsing_result = {
+                            process: PARSING_PROCESS.FAILURE,
+                            errno: -1,
+                            message: message,
+                            data: item,
+                        };
                     }
 
                     return res;
@@ -925,17 +937,26 @@
                         }
 
                         // 定义items相关数据
-                        let items = production.construct[rule_index];
-                        let items_length = items.length;
+                        let items = production.construct[rule_index], items_length = items.length;
                         let items_require = _this.fetchRequire(production, rule_index);
 
                         // 训练require, 自动获取所有的数据, 为循环items服务
+                        if (items_require.item_recursive) {
+
+                            let last_meta = _this.getLastNotEmptyMeta();
+                            if (last_meta && "word" === last_meta.state && _this.isItemRecursiveToken(items_require.item_recursive, meta)) {
+
+                                res = PARSING_PROCESS.SUCCESS;
+                                continue;
+                            }
+                        }
                         let train_info = _this.trainRequire(rule_index, items_require, items, production.strategy);
                         let start = train_info.start, end = train_info.end;
 
                         // 循环此规则下的items
                         for (let j = start; j <= end; ++j) {
 
+                            // items[j] maybe not exist
                             let item = items[j], item_parsing_res = _this.itemParsing(item, meta);
                             if (item_parsing_res) {
 
@@ -1032,6 +1053,18 @@
         getStatementTh() {
 
             return this.props.registers.sp.statement;
+        },
+
+        getLastNotEmptyMeta() {
+
+            for (let i = this.props.meta_sequence.length - 2; i >= 0; --i) {
+
+                let meta = this.props.meta_sequence[i];
+                if (" " === meta.token.value) {
+                    return meta;
+                }
+            }
+            return false;
         },
 
         // 是否是终结符
@@ -1170,6 +1203,10 @@
                 production.strategy[rule_index].push(item_index);
             }
 
+            if (item_index >= production.construct[rule_index].length - 1) {
+                production.strategy[rule_index] = [];
+            }
+
             return production;
         },
 
@@ -1272,9 +1309,19 @@
             return production;
         },
 
+        // token是否是item_recursive
+        isItemRecursiveToken(item_recursive, meta) {
+
+            let pieces = item_recursive.split(".");
+            let production = tool.pureValueAssign(grammar.closure[pieces[0]][pieces[1]]);
+            let item = production.construct[0][0];
+
+            return this.terminatorMatching(item, meta);
+        },
+
         terminatorMatching(item, meta) {
 
-            return item.type === meta.token.type;
+            return item.type.toLowerCase() === meta.token.type.toLowerCase();
         },
 
         /**

@@ -90,12 +90,6 @@
                 // 仅有1种构成方式
                 [{"type": "Punctuator", "value": ","}]
             ],
-
-            // 要求
-            "require": {
-
-                "item_count": 1,
-            },
         },
 
         and_recursive_word: {
@@ -106,12 +100,6 @@
                 // 仅有1种构成方式
                 [{"type": "Keyword", "value": "and"}]
             ],
-
-            // 要求
-            "require": {
-
-                "item_count": 1, // 必须由1项组成
-            },
         },
 
         or_recursive_word: {
@@ -122,12 +110,6 @@
                 // 仅有1种构成方式
                 [{"type": "Keyword", "value": "or"}]
             ],
-
-            // 要求
-            "require": {
-
-                "item_count": 1, // 必须由1项组成
-            },
         },
 
         // 数字原子信息
