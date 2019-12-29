@@ -453,25 +453,13 @@
         judgeSQLType(sql) {
 
             let types = ["select", "update", "delete"]; // 暂时不支持insert语句
-            for (let type of types) {
+            let index = types.indexOf(sql.split(" ")[0]);
+            if (-1 < index) {
 
-                if (sql.indexOf(type) > -1) {
-
-                    if (("select" === type || "delete" === type) && sql.indexOf("from") < 0) {
-
-                        this.error({"msg": "Except 'from' Clause of Statement", "trace": sql});
-                    }
-
-                    if (("update" === type) && sql.indexOf("set") < 0) {
-
-                        this.error({"msg": "Except 'set' Clause of Statement", "trace": sql});
-                    }
-
-                    return type;
-                }
+                return types[index];
             }
 
-            this.error({"msg": "Illegal Statement, only access select, update and delete", "trace": sql});
+            throw this.makeErrObj("Unknown Statement", {"sql": sql});
         },
 
     };
@@ -547,24 +535,6 @@
         // 前置处理
         before() {
 
-            WORD_TABLE.sequence.keyword.any = (() => {
-
-                return WORD_TABLE.sequence.keyword.statement.concat(
-                    WORD_TABLE.sequence.keyword.clause,
-                    WORD_TABLE.sequence.keyword.other,
-                    WORD_TABLE.sequence.keyword.function
-                );
-            })();
-            WORD_TABLE.terminator.punctuator.any = (() => {
-
-                return WORD_TABLE.terminator.punctuator.arithmetic.concat(
-                    WORD_TABLE.terminator.punctuator.comparison,
-                    WORD_TABLE.terminator.punctuator.constructors,
-                    WORD_TABLE.terminator.punctuator.need_match,
-                    WORD_TABLE.terminator.punctuator.space,
-                );
-            })();
-
             // 换行符替换为空格
             this.props.stream = $.trim(this.props.stream.replace(/\n/g, " ").toLowerCase());
 
@@ -573,10 +543,6 @@
 
             // 最后添加分号
             this.props.stream = this.props.stream.split(";")[0] + ";";
-
-            // tokens 情空
-            this.props.tokens = [];
-            this.props.seq = 0;
 
             // 判断sql类型
             this.props.sql_type = tool.judgeSQLType(this.props.stream);
@@ -681,15 +647,15 @@
                     "statement": 0,
                     "statement_meta_queue": [],
                     "clause_meta_queue": [],
-                    "target_expr_production": {},
+                    "target_expr_production_queue": [],
                 },
 
                 // 堆栈指针寄存器
                 sp: {
 
                     "statement": 0,
-                    "clause_name": "",
-                    "expr_name": "",
+                    "clause_name": [],
+                    "expr_name": [],
                 },
 
                 // 程序状态字
@@ -709,7 +675,8 @@
                 translate(state, token) {
 
                     let _this = translator;
-                    let meta = {"state": state, "token": token};
+                    let meta = {"state": state, "token": token}, target_expr_production;
+                    let registers = _this.props.registers, ax = registers.ax, sp = registers.sp, psw = registers.psw;
                     _this.props.meta_sequence.push(meta);
 
                     // 构建 maze
@@ -731,34 +698,33 @@
 
                         case "statement":
 
-                            ++_this.props.registers.ax.statement; // statement个数+1
-                            ++_this.props.registers.sp.statement; // 当前所在的statement
-                            _this.props.registers.ax.statement_meta_queue.push(meta);
+                            ++ax.statement; // statement个数+1
+                            ++sp.statement; // 当前所在的statement
+                            ax.statement_meta_queue.push(meta);
 
-                            let th = _this.props.registers.ax.statement;
-                            res = this.translateStatementState(production_name, _this.props.maze, th);
+                            statement_th = _this.getStatementTh();
+                            res = this.translateStatementState(production_name, _this.props.maze, statement_th);
                             break;
 
                         case "clause":
 
-                            statement_th = _this.props.registers.sp.statement;
-                            clause_meta_queue = tool.pureValueAssign(_this.props.registers.ax.clause_meta_queue);
+                            statement_th = _this.getStatementTh();
+                            clause_meta_queue = tool.pureValueAssign(ax.clause_meta_queue);
                             if (!clause_meta_queue[statement_th - 1]) {
                                 clause_meta_queue[statement_th - 1] = [];
                             }
                             clause_meta_queue[statement_th - 1].push(meta);
-                            _this.props.registers.ax.clause_meta_queue = clause_meta_queue;
-                            _this.props.registers.sp.clause_name = production_name;
+                            ax.clause_meta_queue = clause_meta_queue;
+                            sp.clause_name[statement_th - 1] = production_name;
 
                             res = this.translateClauseState(production_name, _this.props.maze, statement_th);
                             break;
 
                         case "expr":
 
-                            statement_th = _this.props.registers.sp.statement;
-                            clause_name = _this.props.registers.sp.clause_name;
-                            expr_name = production_name;
-                            _this.props.registers.sp.expr_name = expr_name;
+                            statement_th = _this.getStatementTh();
+                            clause_name = sp.clause_name[statement_th - 1];
+                            sp.expr_name[statement_th - 1] = expr_name = production_name;
 
                             res = this.translateExprState(statement_th, clause_name, expr_name);
                             break;
@@ -769,17 +735,25 @@
                             // 如果当前token是子查询的终止token
                             if (tool.isSubqueryEndToken(token)) {
 
-                                --_this.props.registers.sp.statement;
+                                --sp.statement;
                             }
 
                             if (tool.isSQLEndToken(token)) {
 
-                                _this.props.registers.psw.sql_end_f = 1;
+                                psw.sql_end_f = 1;
                             }
 
-                            let production = _this.props.registers.ax.target_expr_production;
-                            expr_name = _this.props.registers.sp.expr_name;
-                            res = this.translateWordState(expr_name, production, meta);
+                            if (!_this.isIgnoreToken(token)) {
+
+                                statement_th = _this.getStatementTh();
+                                target_expr_production = tool.pureValueAssign(
+                                    ax.target_expr_production_queue[statement_th - 1]
+                                );
+                                expr_name = sp.expr_name[statement_th - 1];
+                                res = this.translateWordState(expr_name, target_expr_production, meta);
+                            } else {
+                                res = PARSING_PROCESS.SUCCESS;
+                            }
                             break;
                     }
 
@@ -787,21 +761,23 @@
                     if (PARSING_PROCESS.SUCCESS !== res) {
 
                         // 解析失败
-                        tool.makeErrObj(_this.props.parsing_result.message, _this.props.parsing_result);
+                        throw tool.makeErrObj(_this.props.parsing_result.message, _this.props.parsing_result);
                     }
                 },
 
-                translateStatementState(production_name, production, th) {
+                translateStatementState(production_name, production, statement_th) {
 
-                    if (production_name !== production.production_name) {
-
-                        tool.makeErrObj("production name not matched", production);
-                    }
-
-                    let res = PARSING_PROCESS.FAILURE;
-                    if (1 === th || (1 < th && "select_statement" === production_name)) {
+                    let res = PARSING_PROCESS.FAILURE, _this = translator, res_or_production;
+                    if (1 === statement_th && production_name === production.production_name) {
 
                         res = PARSING_PROCESS.SUCCESS;
+                    } else if (1 < statement_th) {
+
+                        let meta = {"state": "statement", "token": {"type": "Keyword", "value": "select"}},
+                            target_expr_production = _this.props.registers.ax.target_expr_production_queue[statement_th - 2]; // -2是上一个的下标
+                        res = res_or_production = _this.core.procedure.exploreMazeBFS(target_expr_production.production_name, target_expr_production, meta);
+                        _this.reAssignTargetExprProduction(res_or_production, statement_th - 2);
+                        res = res_or_production ? PARSING_PROCESS.SUCCESS : PARSING_PROCESS.FAILURE;
                     }
 
                     return res;
@@ -836,15 +812,14 @@
                 translateExprState(statement_th, clause_name, expr_name) {
 
                     let _this = translator;
-
                     let res = PARSING_PROCESS.FAILURE;
 
-                    // 掐头去尾得到目标production, 后续的translateWord操作会使用这里生成的target_expr_production
+                    // 掐头去尾得到目标production, 后续的translateWord操作会使用这里生成的target_production
                     let production = _this.props.maze;
                     let target_production = _this.findTargetExprProduction(production, statement_th, clause_name, expr_name);
                     if (target_production) {
 
-                        _this.props.registers.ax.target_expr_production = target_production;
+                        _this.props.registers.ax.target_expr_production_queue[statement_th - 1] = target_production;
                         res = PARSING_PROCESS.SUCCESS;
                     }
 
@@ -853,80 +828,26 @@
 
                 translateWordState(production_name, production, meta) {
 
-                    let res = translator.core.procedure.exploreMazeBFS(production_name, production, meta);
+                    let _this = translator, statement_th;
+                    let res = PARSING_PROCESS.FAILURE, res_or_production;
+
+                    if (_this.props.registers.psw.sql_end_f) {
+
+                        res = _this.core.procedure.recallExploreMaze();
+                    } else {
+
+                        // 因为在explore的同时, 会记录strategy, 所以需要重新赋给target_expr_production
+                        statement_th = _this.getStatementTh();
+                        res = res_or_production = _this.core.procedure.exploreMazeBFS(production_name, production, meta);
+                        _this.reAssignTargetExprProduction(res_or_production, statement_th - 1);
+                    }
+
                     return res ? PARSING_PROCESS.SUCCESS : PARSING_PROCESS.FAILURE
                 },
             },
 
             // 核心过程
             procedure: {
-
-                /**
-                 * parsingExprWords: 解析永远解析的是 token , 非终结符的 link 只是引导走向下一个节点 ！
-                 * @param production_name
-                 * @param production
-                 * @param meta
-                 * @returns {production|boolean}
-                 */
-                exploreMazeBFS(production_name, production, meta) {
-
-                    let _this = translator;
-                    if (!production || !production.construct || !Array.isArray(production.construct)) {
-
-                        return false;
-                    }
-                    if (production_name !== production.production_name) {
-
-                        tool.makeErrObj("production name not matched", production);
-                    }
-                    if (production_name.indexOf("statement") > -1) {
-
-                        return production;
-                    }
-
-                    // 循环产生式的每一个规则
-                    let res = PARSING_PROCESS.FAILURE;
-                    for (let rule_index in production.construct) {
-
-                        if (!production.construct.hasOwnProperty(rule_index)) {
-                            continue;
-                        }
-
-                        // 定义items相关数据
-                        let items = production.construct[rule_index];
-                        let items_length = items.length;
-                        let items_require = _this.fetchRequire(production, rule_index);
-
-                        // 训练require, 自动获取所有的数据, 为循环items服务
-                        let start, end,
-                            train_info = _this.trainRequire(rule_index, items_require, items, production.strategy);
-                        start = train_info.start;
-                        end = train_info.end;
-
-                        // 循环此规则下的items
-                        for (let j = start; j <= end; ++j) {
-
-                            let item = items[j], item_parsing_res = _this.itemParsing(item, meta);
-                            if (item_parsing_res) {
-
-                                res = PARSING_PROCESS.SUCCESS;
-                                if (_this.isTerminator(item) && items_require.item_recursive) {
-                                    production.strategy[rule_index].push(j);
-                                }
-                            } else {
-
-                                // 阶段性解析错误
-                                _this.props.parsing_result = {
-                                    process: PARSING_PROCESS.FAILURE,
-                                    errno: -1,
-                                    message: "'" + meta.token.value + "'" + " not matched",
-                                };
-                            }
-                        }
-                    }
-
-                    return (PARSING_PROCESS.SUCCESS === res) ? production : false;
-                },
 
                 // 初始构建maze
                 buildMaze(meta) {
@@ -975,6 +896,107 @@
 
                     return production;
                 },
+
+                /**
+                 * parsingExprWords: 解析永远解析的是token, 非终结符的link仅引导走向下一个节点 ！
+                 * @param production_name
+                 * @param production
+                 * @param meta
+                 * @returns {production|boolean}
+                 */
+                exploreMazeBFS(production_name, production, meta) {
+
+                    let _this = translator;
+                    if (!production || !production.construct || !Array.isArray(production.construct)) {
+
+                        return false;
+                    }
+                    if (production_name !== production.production_name) {
+
+                        throw tool.makeErrObj("production name not matched", production);
+                    }
+
+                    // 循环产生式的每一个规则
+                    let res = PARSING_PROCESS.FAILURE;
+                    for (let rule_index in production.construct) {
+
+                        if (!production.construct.hasOwnProperty(rule_index)) {
+                            continue;
+                        }
+
+                        // 定义items相关数据
+                        let items = production.construct[rule_index];
+                        let items_length = items.length;
+                        let items_require = _this.fetchRequire(production, rule_index);
+
+                        // 训练require, 自动获取所有的数据, 为循环items服务
+                        let train_info = _this.trainRequire(rule_index, items_require, items, production.strategy);
+                        let start = train_info.start, end = train_info.end;
+
+                        // 循环此规则下的items
+                        for (let j = start; j <= end; ++j) {
+
+                            let item = items[j], item_parsing_res = _this.itemParsing(item, meta);
+                            if (item_parsing_res) {
+
+                                res = PARSING_PROCESS.SUCCESS;
+                                production = _this.reAssignStrategy(production, rule_index, j, item, items_require);
+                            } else {
+
+                                // 阶段性解析错误
+                                _this.props.parsing_result = {
+                                    process: PARSING_PROCESS.FAILURE,
+                                    errno: -1,
+                                    message: "'" + meta.token.value + "'" + " not matched",
+                                };
+                            }
+
+                            // 如果items是有序的, 则无论是否解决成功, 都需要提前返回
+                            if (!items_require.item_recursive) {
+
+                                break;
+                            }
+                        }
+
+                    }
+
+                    return (PARSING_PROCESS.SUCCESS === res) ? production : false;
+                },
+
+                /**
+                 * 回溯遍历
+                 * @returns {boolean}
+                 */
+                recallExploreMaze() {
+
+                    let statement_th = 1, _this = translator, production = _this.props.maze;
+                    while (statement_th <= _this.props.registers.ax.statement) {
+
+                        let items = production.construct[0];
+
+                        for (let i = 0; i <= items.length - 1; ++i) {
+
+                            if (items[i].must && !items[i].lock) {
+
+                                _this.props.parsing_result = {
+                                    process: PARSING_PROCESS.FAILURE,
+                                    errno: -1,
+                                    message: "Excepted '" + items[i].reference_name + "'" + "",
+                                    data: items[i],
+                                };
+                                return false;
+                            }
+                        }
+
+                        ++statement_th;
+                        if (statement_th <= _this.props.registers.ax.statement) {
+                            production = _this.findNStatementProduction(production, statement_th);
+                        }
+                    }
+
+                    return true;
+                },
+
             },
         },
 
@@ -1004,13 +1026,30 @@
             let statement = meta.token.value + "_statement";
             let language = globalVariableContainer.config.grammar.language;
 
-            return grammar[language]["statement"][statement];
+            return tool.pureValueAssign(grammar[language]["statement"][statement]);
+        },
+
+        getStatementTh() {
+
+            return this.props.registers.sp.statement;
         },
 
         // 是否是终结符
         isTerminator(item) {
 
             return typeof (item && item.reference && item.reference_name) === "undefined";
+        },
+
+        // 是否可以忽略此Token
+        isIgnoreToken(token) {
+
+            return (-1 < [" "].indexOf(token.value));
+        },
+
+        // 是否是statement产生式
+        isStatementProduction(production_name) {
+
+            return production_name.indexOf("statement") > -1;
         },
 
         // 是否是select查询产生式
@@ -1023,6 +1062,11 @@
             return "from_clause" === production_name;
         },
 
+        // 是否是from表达式产生式
+        isFromExprProduction(production_name) {
+            return "from_expr" === production_name;
+        },
+
         // 是否是子查询产生式
         isSubqueryExpr(production_name) {
             return "subquery_expr" === production_name;
@@ -1032,6 +1076,10 @@
         isLeadToNextMazeProduction(production_name) {
 
             if (this.isFromClauseProduction(production_name)) {
+                return true;
+            }
+
+            if (this.isFromExprProduction(production_name)) {
                 return true;
             }
 
@@ -1082,7 +1130,7 @@
 
                 // 如果statement_th>1, 则一定是子查询
                 ++i;
-                production = production.construct[0][1].link.construct[1][0].link.construct[0][1].link;
+                production = production.construct[0][1].link.construct[0][0].link.construct[1][0].link.construct[0][1].link; // 不要值传递, 否则无法起到改变原值的效果
             }
 
             return production;
@@ -1090,7 +1138,6 @@
 
         findTargetExprProduction(production, statement_th, clause_name, expr_name) {
 
-            let target_production = false;
             production = this.findNStatementProduction(production, statement_th);
             for (let rule of production.construct) {
 
@@ -1098,23 +1145,45 @@
 
                     if (clause_name === item.reference_name) {
 
-                        target_production = item.link.construct[0][0].link;
-                        break;
+                        return item.link.construct[0][0].link;
                     }
                 }
             }
 
-            return target_production;
+            return false;
+        },
+
+        reAssignTargetExprProduction(res_or_production, th) {
+
+            if (res_or_production) {
+
+                this.props.registers.ax.target_expr_production_queue[th] = res_or_production;
+            }
+        },
+
+        reAssignStrategy(production, rule_index, item_index, item, items_require) {
+
+            if (this.isTerminator(item) && !items_require.item_recursive) {
+                production.strategy[rule_index].push(item_index);
+            }
+            if ("select_statement" === item.reference_name && !items_require.item_recursive) {
+                production.strategy[rule_index].push(item_index);
+            }
+
+            return production;
         },
 
         pruningProduction(production_name, production, extra) {
 
-            let deep = extra.deep;
             let state = production_name.split("_")[1];
-            let disabled_props = globalVariableContainer.config.ast.props.disabled;
+            let disabled_props = globalVariableContainer.config.production.props.disabled;
 
-            if (-1 < disabled_props.indexOf("deep")) {
-                production.deep = deep;
+            if (0 > disabled_props.indexOf("deep") && !tool.isUndefined(extra.deep)) {
+                production.deep = extra.deep;
+            }
+
+            if (0 > disabled_props.indexOf("statement_th") && !tool.isUndefined(extra.statement_th)) {
+                production.statement_th = extra.statement_th;
             }
 
             if ("clause" === state) {
@@ -1193,7 +1262,11 @@
                 return rule;
             });
 
-            production = this.pruningProduction(production_name, production, {"deep": deep});
+            let extra = {"deep": deep};
+            if (this.isStatementProduction(production_name)) {
+                extra.statement_th = this.props.registers.sp.statement + 1;
+            }
+            production = this.pruningProduction(production_name, production, extra);
             production.require = this.createRequire(production_name, production);
 
             return production;
@@ -1201,12 +1274,7 @@
 
         terminatorMatching(item, meta) {
 
-            if (-1 < ["number", "string"].indexOf(item.type)) {
-
-                return item.type === typeof meta.token.value;
-            }
-
-            return true;
+            return item.type === meta.token.type;
         },
 
         /**
@@ -1218,6 +1286,9 @@
         itemParsing(item, meta) {
 
             let item_parsing_res = false;
+            if (!item) {
+                return item_parsing_res;
+            }
             if (this.isTerminator(item)) {
 
                 // 终结符的匹配结果
@@ -1231,9 +1302,15 @@
             } else {
 
                 // 非终结符的匹配结果
-                item_parsing_res = this.core.procedure.exploreMazeBFS(item.link.production_name, item.link, meta);
-                if (item_parsing_res) {
+                if ("select_statement" === item.reference_name) {
+
                     item_parsing_res = true;
+                } else {
+
+                    item_parsing_res = this.core.procedure.exploreMazeBFS(item.link.production_name, item.link, meta);
+                    if (item_parsing_res) {
+                        item_parsing_res = true;
+                    }
                 }
             }
 
@@ -1243,12 +1320,16 @@
         // 训练产生式约束
         trainRequire(rule_index, require, items, strategy) {
 
+            rule_index = parseInt(rule_index);
             let items_length = items.length;
             let start = 0, end = items_length - 1;
             if (!require.item_recursive) {
 
                 let last_item_index = strategy[rule_index].last(1);
-                if (!last_item_index) {
+                if (-1 === last_item_index) {
+                    start = 0;
+                    end = -1;
+                } else if (false === last_item_index) {
                     start = 0;
                 } else {
                     end = start = last_item_index + 1;
@@ -1398,10 +1479,6 @@
 
             this.props.tokens = scanner.props.tokens;
 
-            // 清理
-            this.props.nesting_queries = [];
-            this.props.ast = tool.generateASTRootNode();
-
             // 先对括号进行子查询匹配处理
             let token_length = this.props.tokens.length;
             for (let token of this.props.tokens) {
@@ -1514,19 +1591,73 @@
             // 注册扩展
             registerExtension() {
 
-                Array.prototype.last = function (index) {
+                Array.prototype.last = function (index, throw_e = false) {
 
+                    if (tool.isUndefined(arguments[0])) {
+                        index = 1;
+                    }
+                    if (true === index) {
+
+                        index = 1;
+                        throw_e = true;
+                    }
                     let start = (this.length - 1) - index + 1;
-                    for (let i = start; i <= this.length - 1; ++i) {
-                        if (index === i) {
-                            return this[i];
-                        }
+                    if (!tool.isUndefined(this[start])) {
+                        return this[start];
                     }
 
-                    // throw tool.makeErrObj("index overflow", {"index": index, "array": this});
+                    if (throw_e) {
+                        throw tool.makeErrObj("function last with index overflow", {"index": index, "array": this});
+                    }
                     return false;
                 }
             },
+        },
+
+        cleaners: {
+
+            propsCleaning() {
+
+                // Scanner clean
+                WORD_TABLE.sequence.keyword.any = (() => {
+
+                    return WORD_TABLE.sequence.keyword.statement.concat(
+                        WORD_TABLE.sequence.keyword.clause,
+                        WORD_TABLE.sequence.keyword.other,
+                        WORD_TABLE.sequence.keyword.function
+                    );
+                })();
+                WORD_TABLE.terminator.punctuator.any = (() => {
+
+                    return WORD_TABLE.terminator.punctuator.arithmetic.concat(
+                        WORD_TABLE.terminator.punctuator.comparison,
+                        WORD_TABLE.terminator.punctuator.constructors,
+                        WORD_TABLE.terminator.punctuator.need_match,
+                        WORD_TABLE.terminator.punctuator.space,
+                    );
+                })();
+                if (tool.isUndefined(scanner.props_backup)) {
+                    scanner.props_backup = tool.pureValueAssign(scanner.props);
+                } else {
+                    scanner.props = tool.pureValueAssign(scanner.props_backup);
+                }
+                scanner.props.wordTable = WORD_TABLE;
+
+                // Builder clean
+                if (tool.isUndefined(builder.props_backup)) {
+                    builder.props.ast = tool.generateASTRootNode();
+                    builder.props_backup = tool.pureValueAssign(builder.props);
+                } else {
+                    builder.props = tool.pureValueAssign(builder.props_backup);
+                }
+
+                // Translator clean
+                if (tool.isUndefined(translator.props_backup)) {
+                    translator.props_backup = tool.pureValueAssign(translator.props);
+                } else {
+                    translator.props = tool.pureValueAssign(translator.props_backup);
+                }
+            }
         },
 
         init() {
@@ -1539,6 +1670,7 @@
 
             this.registers.registerAOP();
             this.registers.registerExtension();
+            this.cleaners.propsCleaning();
         },
 
         start() {
@@ -1784,7 +1916,6 @@
             return $(this).each(function () {
 
                 (new SQLCompiler(config)).boot();
-                console.log(builder.props.ast);
             });
         },
     });

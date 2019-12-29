@@ -322,6 +322,37 @@
                 "item_recursive": "word.comma_recursive_word",
             },
         },
+
+        "from_expr": {
+
+            "construct": [
+
+                [
+                    {
+                        "reference": "expr",
+                        "reference_name": "source_table_expr",
+                    }
+                ],
+
+                [
+                    {
+                        "reference": "expr",
+                        "reference_name": "subquery_expr",
+                    }
+                ],
+            ],
+
+            "require": {
+
+                "rule_0": {
+                    "item_count": "GE 1",
+                },
+
+                "rule_1": {
+                    "item_count": "GE 1",
+                },
+            },
+        },
     };
 
     // clause 产生式
@@ -350,28 +381,10 @@
                 [
                     {
                         "reference": "expr",
-                        "reference_name": "source_table_expr",
+                        "reference_name": "from_expr",
                     }
-                ],
-
-                [
-                    {
-                        "reference": "expr",
-                        "reference_name": "subquery_expr",
-                    }
-                ],
+                ]
             ],
-
-            "require": {
-
-                "rule_0": {
-                    "item_count": "GE 1",
-                },
-
-                "rule_1": {
-                    "item_count": "GE 1",
-                },
-            },
         },
 
         where_clause: {},
