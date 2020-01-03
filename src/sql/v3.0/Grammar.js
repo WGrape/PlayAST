@@ -305,7 +305,7 @@
             },
         },
 
-        "from_expr": {
+        from_expr: {
 
             "construct": [
 
