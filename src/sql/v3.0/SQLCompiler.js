@@ -548,7 +548,7 @@
 
                     let index = scanner.props.tokens.length;
                     scanner.props.tokens.push({
-                        "type": (!isNaN(ch) && " " !== ch) ? "Number" : "Punctuator",
+                        "type": "Punctuator",
                         "value": ch,
                         "index": index,
                         "seq": scanner.props.seq - ch.length + 1,
@@ -616,7 +616,7 @@
             let sequence = "";
             while (!tool.isUndefined(sequence = this.gets())) {
 
-                if (sequence.length < 2) {
+                if (sequence.length < 2 && WORD_TABLE.terminator.punctuator.any.indexOf(sequence) > -1) {
                     this.fsm.events.flowtoCharState(sequence);
                 } else {
                     this.fsm.events.flowtoWordState(sequence);
@@ -725,6 +725,7 @@
                 psw: {
 
                     "sql_end_f": 0, // SQL结束标志寄存器
+                    "sql_end_able_f": 1,
                 },
 
                 /**
@@ -796,6 +797,7 @@
 
                         case "expr":
 
+                            psw.sql_end_able_f = 0;
                             statement_th = _this.getStatementTh();
                             clause_name = sp.clause_name[statement_th - 1];
                             sp.expr_name[statement_th - 1] = expr_name = production_name;
@@ -815,6 +817,9 @@
                             if (tool.isSQLEndToken(token)) {
 
                                 psw.sql_end_f = 1;
+                                if(!psw.sql_end_able_f){
+                                    throw tool.makeErrObj("SQL not able end", tool.errnoGenerator());
+                                }
                             }
 
                             if (!_this.isIgnoreToken(token)) {
@@ -910,13 +915,13 @@
                     }
 
                     let prediction = "word_next_meta";
-                    _this.core.procedure.nextMetaPrediction(statement_th, prediction, {"state": "word"}, {"is_recursive_word": false});
+                    _this.core.procedure.nextMetaPrediction(statement_th, prediction, {"state": "word"}, {"is_recursive_word": false}, false);
                     return res;
                 },
 
                 translateWordState(production_name, production, meta) {
 
-                    let _this = translator, statement_th;
+                    let _this = translator, statement_th = _this.getStatementTh();
                     let res = PARSING_PROCESS.FAILURE, res_or_production;
 
                     if (_this.props.registers.psw.sql_end_f) {
@@ -925,10 +930,11 @@
                     } else {
 
                         // 因为在explore的同时, 会记录strategy, 所以需要重新赋给target_expr_production
-                        statement_th = _this.getStatementTh();
                         res = res_or_production = _this.core.procedure.exploreMazeDFS(production_name, production, meta);
                         _this.reAssignTargetExprProduction(res_or_production, statement_th - 1);
                     }
+
+                    _this.props.registers.prediction["word_next_meta"][statement_th - 1] = _this.props.registers.prediction_temp["word_next_meta"][statement_th - 1];
 
                     return res ? PARSING_PROCESS.SUCCESS : PARSING_PROCESS.FAILURE
                 },
@@ -1020,19 +1026,27 @@
                         let train_info = _this.trainRequire(rule_index, items_require, items, production.strategy);
                         let start = train_info.start, end = train_info.end;
 
+
+                        let statement_th = _this.getStatementTh(),
+                            prediction_meta = _this.props.registers.prediction.word_next_meta[statement_th - 1];
+                        if (items_require.item_recursive && prediction_meta && prediction_meta.is_recursive_word) {
+
+                            if (_this.isItemRecursiveToken(items_require.item_recursive, meta)) {
+
+                                res = PARSING_PROCESS.SUCCESS;
+                                _this.props.registers.psw.sql_end_able_f = 0;
+                                _this.core.procedure.nextMetaPrediction(statement_th, "word_next_meta", {"state": "word"}, {"is_recursive_word": false}, true);
+                                continue;
+                            } else {
+
+                                throw tool.makeErrObj("nextMetaComparison failed with not recursive", tool.errnoGenerator(),
+                                    {"prediction_meta": prediction_meta, "meta": meta}
+                                );
+                            }
+                        }
+
                         // 循环此规则下的items
                         for (let j = start; j <= end; ++j) {
-
-                            // 先比对, 后预测
-                            let statement_th = translator.getStatementTh(), prediction_key = "word_next_meta",
-                                prediction_meta = _this.props.registers.prediction[prediction_key][statement_th - 1];
-                            _this.core.procedure.nextMetaComparison(
-                                statement_th, prediction_key, meta,
-                                {"items_require": items_require}
-                            );
-                            if (items_require.item_recursive && prediction_meta.is_recursive_word && _this.isItemRecursiveToken(items_require.item_recursive, meta)) {
-                                continue;
-                            }
 
                             // items[j] maybe not exist
                             let item = items[j], item_parsing_res = _this.itemParsing(item, meta);
@@ -1097,28 +1111,28 @@
                 },
 
                 // 把当前的meat与之前预测的对下一个meta做对比, 错误则直接抛异常
-                nextMetaComparison(statement_th, prediction_key, meta, extra = {}) {
+                nextMetaComparison(prediction_key, meta, extra) {
 
-                    let _this = translator,
+                    let _this = translator, statement_th = _this.getStatementTh(),
                         prediction_meta = _this.props.registers.prediction[prediction_key][statement_th - 1];
 
                     switch (meta.state) {
 
                         case "word":
-                            let items_require = extra.items_require;
+                            let items_require = extra['items_require'];
                             if (prediction_meta.state !== meta.state) {
 
                                 throw tool.makeErrObj("nextMetaComparison failed", tool.errnoGenerator(),
                                     {"prediction_meta": prediction_meta, "meta": meta}
                                 );
                             }
-                            if (items_require.item_recursive && meta.is_recursive_word && !_this.isItemRecursiveToken(items_require.item_recursive, meta)) {
+                            if (items_require.item_recursive && prediction_meta.is_recursive_word && !_this.isItemRecursiveToken(items_require.item_recursive, meta)) {
 
                                 throw tool.makeErrObj("nextMetaComparison failed with not recursive", tool.errnoGenerator(),
                                     {"prediction_meta": prediction_meta, "meta": meta}
                                 );
                             }
-                            if (items_require.item_recursive && !meta.is_recursive_word && _this.isItemRecursiveToken(items_require.item_recursive, meta)) {
+                            if (items_require.item_recursive && !prediction_meta.is_recursive_word && _this.isItemRecursiveToken(items_require.item_recursive, meta)) {
 
                                 throw tool.makeErrObj("nextMetaComparison failed with could not recursive", tool.errnoGenerator(),
                                     {"prediction_meta": prediction_meta, "meta": meta}
@@ -1142,7 +1156,7 @@
                 },
 
                 // 预测下个meta
-                nextMetaPrediction(statement_th, prediction_key, meta, extra = {}) {
+                nextMetaPrediction(statement_th, prediction_key, meta, extra, prediction_temp = false) {
 
                     let _this = translator;
 
@@ -1165,7 +1179,11 @@
                             break;
                     }
 
-                    _this.props.registers.prediction[prediction_key][statement_th - 1] = meta;
+                    if (prediction_temp) {
+                        _this.props.registers.prediction_temp[prediction_key][statement_th - 1] = meta;
+                    } else {
+                        _this.props.registers.prediction[prediction_key][statement_th - 1] = meta;
+                    }
                 },
             },
         },
@@ -1345,10 +1363,10 @@
 
         reAssignStrategy(production, rule_index, item_index, item, items_require) {
 
-            if (this.isTerminator(item) && !items_require.item_recursive) {
+            if ("select_statement" === item.reference_name && !items_require.item_recursive) {
                 production.strategy[rule_index].push(item_index);
             }
-            if ("select_statement" === item.reference_name && !items_require.item_recursive) {
+            if (this.isTerminator(item) && !items_require.item_recursive) {
                 production.strategy[rule_index].push(item_index);
             }
 
@@ -1356,12 +1374,14 @@
             if (item_index >= production.construct[rule_index].length - 1) {
 
                 production.strategy[rule_index] = [];
+                this.props.registers.psw.sql_end_able_f = 1;
                 extra = {"is_recursive_word": true}; // 下一个可以是递归符
             } else {
 
+                this.props.registers.psw.sql_end_able_f = 0;
                 extra = {"is_recursive_word": false};
             }
-            this.core.procedure.nextMetaPrediction(statement_th, "word_next_meta", meta, extra);
+            this.core.procedure.nextMetaPrediction(statement_th, "word_next_meta", meta, extra, true);
 
             return production;
         },
@@ -1480,7 +1500,7 @@
             return item.type.toLowerCase() === meta.token.type.toLowerCase();
         },
 
-        terminatorMatchingStrictly(item, meta){
+        terminatorMatchingStrictly(item, meta) {
 
             return (meta.token.type === item.type && meta.token.value === item.value);
         },
@@ -1863,6 +1883,7 @@
                 }
 
                 // Translator clean
+                translator.props.registers.prediction_temp = tool.pureValueAssign(translator.props.registers.prediction);
                 if (tool.isUndefined(translator.props_backup)) {
                     translator.props_backup = tool.pureValueAssign(translator.props);
                 } else {

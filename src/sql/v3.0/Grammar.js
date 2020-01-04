@@ -328,10 +328,12 @@
 
                 "rule_0": {
                     "item_count": "GE 1",
+                    "item_recursive": "word.comma_recursive_word",
                 },
 
                 "rule_1": {
                     "item_count": "GE 1",
+                    "item_recursive": "word.comma_recursive_word",
                 },
             },
         },
