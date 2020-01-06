@@ -767,6 +767,10 @@
                         _this.props.maze = _this.core.procedure.buildMazeAppended(meta, _this.props.maze);
                     }
 
+                    // 根据预测的meta比对当前的meta
+                    let prediction_key = "word_next_meta";
+                    _this.core.procedure.nextMetaComparison(prediction_key, meta);
+
                     // 根据当前的状态解析
                     let res = PARSING_PROCESS.FAILURE, statement_th, clause_meta_queue, clause_name, expr_name;
                     switch (state) {
@@ -817,7 +821,7 @@
                             if (tool.isSQLEndToken(token)) {
 
                                 psw.sql_end_f = 1;
-                                if(!psw.sql_end_able_f){
+                                if (!psw.sql_end_able_f) {
                                     throw tool.makeErrObj("SQL not able end", tool.errnoGenerator());
                                 }
                             }
@@ -1027,8 +1031,8 @@
                         let start = train_info.start, end = train_info.end;
 
 
-                        let statement_th = _this.getStatementTh(),
-                            prediction_meta = _this.props.registers.prediction.word_next_meta[statement_th - 1];
+                        let statement_th = _this.getStatementTh(), prediction_key = "word_next_meta",
+                            prediction_meta = _this.getPredictionMeta(statement_th, prediction_key);
                         if (items_require.item_recursive && prediction_meta && prediction_meta.is_recursive_word) {
 
                             if (_this.isItemRecursiveToken(items_require.item_recursive, meta)) {
@@ -1114,31 +1118,23 @@
                 nextMetaComparison(prediction_key, meta, extra) {
 
                     let _this = translator, statement_th = _this.getStatementTh(),
-                        prediction_meta = _this.props.registers.prediction[prediction_key][statement_th - 1];
+                        prediction_meta = _this.getPredictionMeta(statement_th, prediction_key);
+
+                    if (!prediction_meta) {
+                        return;
+                    }
+
+                    if (!prediction_meta.is_recursive_word && meta.state !== prediction_meta.state) {
+
+                        throw tool.makeErrObj("prediction_meta state not match current meta state", tool.errnoGenerator(), {
+                            "prediction_meta": prediction_meta,
+                            "meta": meta
+                        });
+                    }
 
                     switch (meta.state) {
 
                         case "word":
-                            let items_require = extra['items_require'];
-                            if (prediction_meta.state !== meta.state) {
-
-                                throw tool.makeErrObj("nextMetaComparison failed", tool.errnoGenerator(),
-                                    {"prediction_meta": prediction_meta, "meta": meta}
-                                );
-                            }
-                            if (items_require.item_recursive && prediction_meta.is_recursive_word && !_this.isItemRecursiveToken(items_require.item_recursive, meta)) {
-
-                                throw tool.makeErrObj("nextMetaComparison failed with not recursive", tool.errnoGenerator(),
-                                    {"prediction_meta": prediction_meta, "meta": meta}
-                                );
-                            }
-                            if (items_require.item_recursive && !prediction_meta.is_recursive_word && _this.isItemRecursiveToken(items_require.item_recursive, meta)) {
-
-                                throw tool.makeErrObj("nextMetaComparison failed with could not recursive", tool.errnoGenerator(),
-                                    {"prediction_meta": prediction_meta, "meta": meta}
-                                );
-                            }
-
                             break;
 
                         case "expr":
@@ -1220,6 +1216,11 @@
         getStatementTh() {
 
             return this.props.registers.sp.statement;
+        },
+
+        getPredictionMeta(statement_th, prediction_key) {
+
+            return this.props.registers.prediction[prediction_key][statement_th - 1];
         },
 
         getLastNotEmptyMeta() {
