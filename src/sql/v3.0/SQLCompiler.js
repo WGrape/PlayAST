@@ -111,6 +111,25 @@
             return str.slice(0, end + 1);
         },
 
+        unique(arr) {
+
+            return arr.filter(function (item, index, array) {
+                return array.indexOf(item) === index;
+            });
+        },
+
+        pushValue(object, property, value) {
+
+            if (tool.isArray(object[property])) {
+                object[property].push(value);
+                object[property] = tool.unique(object[property]);
+            } else {
+                object[property] = tool.unique([object[property], value]);
+            }
+
+            return object;
+        },
+
         isNumber(x) {
 
             return "[object Number]" === Object.prototype.toString.call(x);
@@ -710,6 +729,7 @@
                     "statement": 0,
                     "statement_meta_queue": [],
                     "clause_meta_queue": [],
+                    "word_meta_queue": [],
                     "target_expr_production_queue": [],
                 },
 
@@ -772,7 +792,8 @@
                     _this.core.procedure.nextMetaComparison(prediction_key, meta);
 
                     // 根据当前的状态解析
-                    let res = PARSING_PROCESS.FAILURE, statement_th, clause_meta_queue, clause_name, expr_name;
+                    let res = PARSING_PROCESS.FAILURE, statement_th, clause_meta_queue, word_meta_queue, clause_name,
+                        expr_name;
                     switch (state) {
 
                         case "statement":
@@ -787,6 +808,7 @@
 
                         case "clause":
 
+                            // 记录clause历史
                             statement_th = _this.getStatementTh();
                             clause_meta_queue = tool.pureValueAssign(ax.clause_meta_queue);
                             if (!clause_meta_queue[statement_th - 1]) {
@@ -794,6 +816,7 @@
                             }
                             clause_meta_queue[statement_th - 1].push(meta);
                             ax.clause_meta_queue = clause_meta_queue;
+
                             sp.clause_name[statement_th - 1] = production_name;
 
                             res = this.translateClauseState(production_name, _this.props.maze, statement_th);
@@ -811,6 +834,15 @@
 
                         case "word":
                         default:
+
+                            // 记录Word历史
+                            statement_th = _this.getStatementTh();
+                            word_meta_queue = tool.pureValueAssign(ax.word_meta_queue);
+                            if (!word_meta_queue[statement_th - 1]) {
+                                word_meta_queue[statement_th - 1] = [];
+                            }
+                            word_meta_queue[statement_th - 1].push(meta);
+                            ax.word_meta_queue = word_meta_queue;
 
                             // 如果当前token是子查询的终止token
                             if (tool.isSubqueryEndToken(token)) {
@@ -1030,10 +1062,9 @@
                         let train_info = _this.trainRequire(rule_index, items_require, items, production.strategy);
                         let start = train_info.start, end = train_info.end;
 
-
-                        let statement_th = _this.getStatementTh(), prediction_key = "word_next_meta",
-                            prediction_meta = _this.getPredictionMeta(statement_th, prediction_key);
-                        if (items_require.item_recursive && prediction_meta && prediction_meta.is_recursive_word) {
+                        // 如果当前的meta就是recursiveToken则不必进行items匹配
+                        let statement_th = _this.getStatementTh();
+                        if (!_this.isItemsInOrder(items_require) && _this.predictionIsRecursiveWord()) {
 
                             if (_this.isItemRecursiveToken(items_require.item_recursive, meta)) {
 
@@ -1041,19 +1072,16 @@
                                 _this.props.registers.psw.sql_end_able_f = 0;
                                 _this.core.procedure.nextMetaPrediction(statement_th, "word_next_meta", {"state": "word"}, {"is_recursive_word": false}, true);
                                 continue;
-                            } else {
-
-                                throw tool.makeErrObj("nextMetaComparison failed with not recursive", tool.errnoGenerator(),
-                                    {"prediction_meta": prediction_meta, "meta": meta}
-                                );
                             }
                         }
 
                         // 循环此规则下的items
+                        // 定义, 针对于无序的items, 记录每一个item的匹配进度
+                        let item_index;
                         for (let j = start; j <= end; ++j) {
 
                             // items[j] maybe not exist
-                            let item = items[j], item_parsing_res = _this.itemParsing(item, meta);
+                            let item = items[j], item_index = j, item_parsing_res = _this.itemParsing(item, meta);
                             if (item_parsing_res) {
 
                                 res = PARSING_PROCESS.SUCCESS;
@@ -1069,12 +1097,35 @@
                             }
 
                             // 如果items是有序的, 则无论是否解决成功, 都需要提前返回
-                            if (!items_require.item_recursive) {
-
+                            if (_this.isItemsInOrder(items_require)) {
                                 break;
                             }
                         }
 
+                        // items匹配结束, 执行nextMetaPrediction
+                        if (PARSING_PROCESS.SUCCESS === res) {
+
+                            let prediction_key = "word_next_meta",
+                                prediction_meta = _this.getPredictionMeta(statement_th, prediction_key);
+                            let extra = {"is_recursive_word": prediction_meta.is_recursive_word};
+
+                            // 如果是非终结符则跳过(因为已经内部计算过)
+                            if (!_this.isTerminator(items[item_index])) {
+
+                                continue;
+                            } else if (_this.isRuleStrategyIndexEnd(production, items_require, rule_index, item_index)) {
+
+                                // 2种可能都允许
+                                extra.is_recursive_word = [true, false];
+                            } else if (tool.empty(_this.props.registers.ax.word_meta_queue)) {
+
+                                extra = tool.pushValue(extra, "is_recursive_word", false);
+                            } else {
+
+                                extra = tool.pushValue(extra, "is_recursive_word", false);
+                            }
+                            _this.core.procedure.nextMetaPrediction(statement_th, "word_next_meta", meta, extra, true);
+                        }
                     }
 
                     return (PARSING_PROCESS.SUCCESS === res) ? production : false;
@@ -1124,7 +1175,7 @@
                         return;
                     }
 
-                    if (!prediction_meta.is_recursive_word && meta.state !== prediction_meta.state) {
+                    if (!_this.predictionIsRecursiveWord() && meta.state !== prediction_meta.state) {
 
                         throw tool.makeErrObj("prediction_meta state not match current meta state", tool.errnoGenerator(), {
                             "prediction_meta": prediction_meta,
@@ -1223,6 +1274,24 @@
             return this.props.registers.prediction[prediction_key][statement_th - 1];
         },
 
+        predictionIsRecursiveWord() {
+
+            let prediction_key = "word_next_meta", statement_th = this.getStatementTh(),
+                prediction_meta = this.getPredictionMeta(statement_th, prediction_key);
+
+            if (!prediction_meta || !prediction_meta.is_recursive_word) {
+                return false;
+            }
+
+            let is_recursive = prediction_meta.is_recursive_word;
+            if (tool.isArray(is_recursive)) {
+
+                return is_recursive.indexOf(true) > -1;
+            }
+
+            return is_recursive;
+        },
+
         getLastNotEmptyMeta() {
 
             for (let i = this.props.meta_sequence.length - 2; i >= 0; --i) {
@@ -1245,6 +1314,23 @@
         isIgnoreToken(token) {
 
             return (-1 < [" "].indexOf(token.value));
+        },
+
+        // items是否有序
+        isItemsInOrder(items_require) {
+
+            return !items_require.item_recursive;
+        },
+
+        // 规则的策略下标是否已匹配到最尾 TODO
+        isRuleStrategyIndexEnd(production, items_require, rule_index, item_index) {
+
+            // 无序则直接返回true
+            if (!this.isItemsInOrder(items_require)) {
+                return true;
+            }
+
+            return item_index >= production.construct[rule_index].length - 1;
         },
 
         // 是否是statement产生式
@@ -1301,6 +1387,18 @@
         isRequireHasSubRule(production) {
 
             return (!production.require || !production.require.rule_1) ? 0 : 1;
+        },
+
+        // 规则是否可用
+        isRuleAvailable(production, rule_index) {
+
+            return !(production.strategy[rule_index].last() === -1);
+        },
+
+        // 规则置为不可用
+        setRuleUnavailable(production, rule_index) {
+
+            production.strategy[rule_index] = [-1];
         },
 
         // 获取约束
@@ -1364,25 +1462,24 @@
 
         reAssignStrategy(production, rule_index, item_index, item, items_require) {
 
-            if ("select_statement" === item.reference_name && !items_require.item_recursive) {
-                production.strategy[rule_index].push(item_index);
-            }
-            if (this.isTerminator(item) && !items_require.item_recursive) {
-                production.strategy[rule_index].push(item_index);
+            if (this.isItemsInOrder(items_require)) {
+
+                if (this.isTerminator(item)) {
+
+                    production.strategy[rule_index].push(item_index);
+                } else if ("select_statement" === item.reference_name) {
+                    production.strategy[rule_index].push(item_index);
+                }
             }
 
-            let extra, statement_th = this.getStatementTh(), meta = this.props.meta_sequence.last();
-            if (item_index >= production.construct[rule_index].length - 1) {
+            if (this.isRuleStrategyIndexEnd(production, items_require, rule_index, item_index)) {
 
                 production.strategy[rule_index] = [];
                 this.props.registers.psw.sql_end_able_f = 1;
-                extra = {"is_recursive_word": true}; // 下一个可以是递归符
             } else {
 
                 this.props.registers.psw.sql_end_able_f = 0;
-                extra = {"is_recursive_word": false};
             }
-            this.core.procedure.nextMetaPrediction(statement_th, "word_next_meta", meta, extra, true);
 
             return production;
         },
